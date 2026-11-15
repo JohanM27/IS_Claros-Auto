@@ -1,3 +1,3 @@
 # Frontend
 
-The React application lives here. Source code will be organized under `src/` by reusable components, pages, layouts, and services. The initial scaffold is intentionally limited to project foundations.
+React, TypeScript, Vite, and Tailwind CSS application. Source code is organized under `src/` into reusable components, pages, layouts, and services. The initial screen is a small scaffold and does not implement workshop workflows.
