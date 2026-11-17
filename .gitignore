@@ -10,6 +10,7 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+backend/src/generated/
 
 # Local tooling and editor files
 .vscode/

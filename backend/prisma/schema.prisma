@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Service {
+  id          String   @id @default(cuid())
+  slug        String   @unique @db.VarChar(80)
+  name        String   @db.VarChar(120)
+  description String   @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now()) @db.Timestamptz(3)
+}
