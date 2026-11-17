@@ -9,7 +9,7 @@ export function AppointmentsPage() {
         <PageHeading
           eyebrow="Solicitud de atención"
           title="Cuéntanos qué necesita tu vehículo."
-          description="Comparte tus datos y una fecha preferida. En esta etapa, el formulario funciona solo como demostración."
+          description="Comparte tus datos y una fecha preferida. El taller revisará la solicitud y confirmará la disponibilidad."
         />
         <Link
           to="/servicios"

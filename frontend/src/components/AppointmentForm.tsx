@@ -1,11 +1,13 @@
-import { useState, type FormEvent, type ReactNode } from 'react'
+import { useEffect, useState, type FormEvent, type ReactNode } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { services } from '../data/services'
+import { ApiError, createAppointment, getServices } from '../services/api'
 import type {
   AppointmentErrors,
   AppointmentField,
   AppointmentFormValues,
+  AppointmentSubmission,
 } from '../types/appointment'
+import type { Service } from '../types/service'
 import { getLocalDateValue, validateAppointment } from '../utils/appointmentValidation'
 
 type FormFieldProps = {
@@ -54,33 +56,69 @@ const initialValues: AppointmentFormValues = {
   notes: '',
 }
 
+const backendFieldToForm: Record<string, AppointmentField> = {
+  name: 'fullName',
+  phone: 'phone',
+  email: 'email',
+  vehicleMake: 'vehicleMake',
+  vehicleModel: 'vehicleModel',
+  vehicleYear: 'vehicleYear',
+  serviceId: 'service',
+  requestedAt: 'preferredDate',
+  notes: 'notes',
+}
+
 export function AppointmentForm() {
   const [searchParams] = useSearchParams()
-  const requestedService = searchParams.get('servicio') ?? ''
-  const selectedService = services.find((service) => service.name === requestedService)?.name ?? ''
-  const [values, setValues] = useState<AppointmentFormValues>(() => ({
-    ...initialValues,
-    service: selectedService,
-  }))
+  const requestedServiceSlug = searchParams.get('servicio') ?? ''
+  const [services, setServices] = useState<Service[]>([])
+  const [servicesLoading, setServicesLoading] = useState(true)
+  const [servicesError, setServicesError] = useState('')
+  const [values, setValues] = useState<AppointmentFormValues>(initialValues)
   const [errors, setErrors] = useState<AppointmentErrors>({})
   const [hasSubmitted, setHasSubmitted] = useState(false)
-  const [isConfirmed, setIsConfirmed] = useState(false)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submission, setSubmission] = useState<AppointmentSubmission | null>(null)
+  const [requestError, setRequestError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    getServices()
+      .then((items) => {
+        if (!active) return
+        setServices(items)
+        const selected = items.find((service) => service.slug === requestedServiceSlug)
+        if (selected) setValues((current) => ({ ...current, service: selected.id }))
+      })
+      .catch(() => {
+        if (active) setServicesError('No se pudo cargar el catálogo. Intenta recargar la página.')
+      })
+      .finally(() => {
+        if (active) setServicesLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [requestedServiceSlug])
 
   function updateField(field: AppointmentField, value: string) {
     const updatedValues = { ...values, [field]: value }
     setValues(updatedValues)
-    setIsConfirmed(false)
+    setSubmission(null)
+    setRequestError('')
 
     if (hasSubmitted) setErrors(validateAppointment(updatedValues))
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (isSubmitting) return
     const nextErrors = validateAppointment(values)
 
     setHasSubmitted(true)
     setErrors(nextErrors)
-    setIsConfirmed(false)
+    setSubmission(null)
+    setRequestError('')
 
     const firstInvalidField = Object.keys(nextErrors)[0] as AppointmentField | undefined
     if (firstInvalidField) {
@@ -88,10 +126,30 @@ export function AppointmentForm() {
       return
     }
 
-    setValues(initialValues)
-    setErrors({})
-    setHasSubmitted(false)
-    setIsConfirmed(true)
+    setIsSubmitting(true)
+    try {
+      const result = await createAppointment(values)
+      setSubmission(result)
+      setValues(initialValues)
+      setErrors({})
+      setHasSubmitted(false)
+    } catch (error) {
+      if (error instanceof ApiError) {
+        const mapped: AppointmentErrors = {}
+        for (const [field, messages] of Object.entries(error.fieldErrors)) {
+          const formField = backendFieldToForm[field]
+          if (formField && messages[0]) mapped[formField] = messages[0]
+        }
+        setErrors(mapped)
+        setRequestError(error.message)
+        const firstField = Object.keys(mapped)[0] as AppointmentField | undefined
+        if (firstField) document.getElementById(firstField)?.focus()
+      } else {
+        setRequestError('No se pudo enviar la solicitud. Intenta de nuevo.')
+      }
+    } finally {
+      setIsSubmitting(false)
+    }
   }
 
   const errorEntries = Object.entries(errors) as [AppointmentField, string][]
@@ -124,6 +182,17 @@ export function AppointmentForm() {
         </div>
       )}
 
+      {servicesError && (
+        <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
+          {servicesError}
+        </p>
+      )}
+      {requestError && (
+        <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
+          {requestError}
+        </p>
+      )}
+
       <div className="grid gap-x-5 gap-y-6 sm:grid-cols-2">
         <FormField id="fullName" label="Nombre completo" required error={errors.fullName}>
           <input
@@ -139,7 +208,6 @@ export function AppointmentForm() {
             className={controlClassName}
           />
         </FormField>
-
         <FormField id="phone" label="Teléfono" required error={errors.phone}>
           <input
             id="phone"
@@ -160,7 +228,6 @@ export function AppointmentForm() {
             </span>
           )}
         </FormField>
-
         <FormField id="email" label="Correo electrónico (opcional)" error={errors.email}>
           <input
             id="email"
@@ -174,7 +241,6 @@ export function AppointmentForm() {
             className={controlClassName}
           />
         </FormField>
-
         <FormField id="vehicleMake" label="Marca del vehículo" required error={errors.vehicleMake}>
           <input
             id="vehicleMake"
@@ -188,7 +254,6 @@ export function AppointmentForm() {
             className={controlClassName}
           />
         </FormField>
-
         <FormField
           id="vehicleModel"
           label="Modelo del vehículo"
@@ -207,7 +272,6 @@ export function AppointmentForm() {
             className={controlClassName}
           />
         </FormField>
-
         <FormField id="vehicleYear" label="Año del vehículo" required error={errors.vehicleYear}>
           <input
             id="vehicleYear"
@@ -224,27 +288,28 @@ export function AppointmentForm() {
             className={controlClassName}
           />
         </FormField>
-
         <FormField id="service" label="Servicio solicitado" required error={errors.service}>
           <select
             id="service"
             name="service"
             required
+            disabled={servicesLoading || Boolean(servicesError)}
             value={values.service}
             onChange={(event) => updateField('service', event.target.value)}
             aria-invalid={Boolean(errors.service)}
             aria-describedby={errors.service ? 'service-error' : undefined}
             className={controlClassName}
           >
-            <option value="">Selecciona un servicio</option>
+            <option value="">
+              {servicesLoading ? 'Cargando servicios…' : 'Selecciona un servicio'}
+            </option>
             {services.map((service) => (
-              <option key={service.id} value={service.name}>
+              <option key={service.id} value={service.id}>
                 {service.name}
               </option>
             ))}
           </select>
         </FormField>
-
         <FormField id="preferredDate" label="Fecha preferida" required error={errors.preferredDate}>
           <input
             id="preferredDate"
@@ -259,7 +324,6 @@ export function AppointmentForm() {
             className={controlClassName}
           />
         </FormField>
-
         <FormField id="preferredTime" label="Hora preferida" required error={errors.preferredTime}>
           <input
             id="preferredTime"
@@ -273,7 +337,6 @@ export function AppointmentForm() {
             className={controlClassName}
           />
         </FormField>
-
         <FormField id="notes" label="Observaciones">
           <textarea
             id="notes"
@@ -288,24 +351,33 @@ export function AppointmentForm() {
 
       <div className="flex flex-col items-start gap-4 border-t border-slate-200 pt-6 sm:flex-row sm:items-center sm:justify-between">
         <p className="max-w-xl text-sm leading-6 text-slate-600">
-          Formulario de demostración. No se enviará ni guardará información personal.
+          La solicitud se guardará en el taller y quedará pendiente de confirmación.
         </p>
         <button
           type="submit"
-          className="inline-flex min-h-12 w-full items-center justify-center rounded-md bg-blue-700 px-6 py-3 font-bold text-white transition-colors hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 sm:w-auto"
+          disabled={
+            isSubmitting || servicesLoading || Boolean(servicesError) || services.length === 0
+          }
+          className="inline-flex min-h-12 w-full items-center justify-center rounded-md bg-blue-700 px-6 py-3 font-bold text-white transition-colors hover:bg-blue-800 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-700 disabled:cursor-wait disabled:opacity-60 sm:w-auto"
         >
-          Enviar solicitud de demostración
+          {isSubmitting ? 'Enviando…' : 'Enviar solicitud de cita'}
         </button>
       </div>
 
-      {isConfirmed && (
-        <p
+      {submission && (
+        <div
           role="status"
-          className="rounded-md border border-amber-300 bg-amber-50 p-4 leading-7 text-amber-950"
+          className="space-y-2 rounded-md border border-amber-300 bg-amber-50 p-4 leading-7 text-amber-950"
         >
-          Esta solicitud es una demostración: no fue enviada al taller y no constituye una cita
-          confirmada. Tus datos no se guardaron.
-        </p>
+          <p>
+            Tu solicitud quedó registrada con estado <strong>PENDIENTE</strong>. El taller debe
+            confirmarla.
+          </p>
+          <p>Guarda este token privado para consultar el estado. No se volverá a mostrar:</p>
+          <code className="block break-all rounded bg-white p-2 text-sm">
+            {submission.lookupToken}
+          </code>
+        </div>
       )}
     </form>
   )

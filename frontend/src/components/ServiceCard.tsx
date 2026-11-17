@@ -6,7 +6,7 @@ type ServiceCardProps = {
 }
 
 export function ServiceCard({ service }: ServiceCardProps) {
-  const appointmentUrl = `/citas?servicio=${encodeURIComponent(service.name)}`
+  const appointmentUrl = `/citas?servicio=${encodeURIComponent(service.slug)}`
 
   return (
     <article className="flex h-full flex-col rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-shadow hover:shadow-md sm:p-7">

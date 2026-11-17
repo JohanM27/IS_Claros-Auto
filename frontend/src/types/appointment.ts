@@ -13,3 +13,12 @@ export type AppointmentFormValues = {
 
 export type AppointmentField = keyof AppointmentFormValues
 export type AppointmentErrors = Partial<Record<AppointmentField, string>>
+
+export type AppointmentSubmission = {
+  id: string
+  status: 'PENDIENTE'
+  requestedAt: string
+  createdAt: string
+  service: { id: string; name: string }
+  lookupToken: string
+}

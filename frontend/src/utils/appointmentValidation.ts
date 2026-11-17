@@ -1,4 +1,3 @@
-import { services } from '../data/services'
 import type { AppointmentErrors, AppointmentFormValues } from '../types/appointment'
 
 export function getLocalDateValue(date = new Date()): string {
@@ -39,9 +38,7 @@ export function validateAppointment(values: AppointmentFormValues): AppointmentE
     errors.vehicleYear = 'Escribe un año válido para el vehículo.'
   }
 
-  if (!services.some((service) => service.name === values.service)) {
-    errors.service = 'Selecciona el servicio que necesitas.'
-  }
+  if (!values.service) errors.service = 'Selecciona el servicio que necesitas.'
 
   if (!values.preferredDate) {
     errors.preferredDate = 'Selecciona una fecha preferida.'
@@ -54,6 +51,11 @@ export function validateAppointment(values: AppointmentFormValues): AppointmentE
       errors.preferredDate = 'Selecciona una fecha válida.'
     } else if (values.preferredDate < getLocalDateValue()) {
       errors.preferredDate = 'La fecha debe ser hoy o una fecha futura.'
+    } else if (values.preferredTime) {
+      const requestedAt = new Date(`${values.preferredDate}T${values.preferredTime}:00`)
+      if (requestedAt.getTime() <= Date.now()) {
+        errors.preferredTime = 'La hora debe ser posterior a la hora actual.'
+      }
     }
   }
 
