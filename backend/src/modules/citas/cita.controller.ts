@@ -18,7 +18,8 @@ export function crearControladorConsultaCita(consultar: Consultar): RequestHandl
   return async (request, response) => {
     const token = request.get('authorization')?.replace(/^Bearer\s+/i, '')
     const id = request.params.id
-    const cita = await consultar(Array.isArray(id) ? id[0] : id, token)
+    const appointmentId = z.uuid().parse(Array.isArray(id) ? id[0] : id)
+    const cita = await consultar(appointmentId, token)
     response.status(200).set('Cache-Control', 'no-store').json({ data: cita })
   }
 }

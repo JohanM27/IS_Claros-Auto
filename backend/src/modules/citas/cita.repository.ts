@@ -9,23 +9,47 @@ export async function crearRegistroCita(input: CrearCitaInput, lookupTokenHash: 
     })
     if (!service) return null
 
-    const customer = await transaction.customer.create({
-      data: {
-        name: input.name,
-        phone: input.phone,
-        email: input.email || null,
-      },
-      select: { id: true },
+    const existingCustomer = await transaction.customer.findFirst({
+      where: { name: input.name, phone: input.phone },
+      select: { id: true, email: true },
     })
-    const vehicle = await transaction.vehicle.create({
-      data: {
+    const customer = existingCustomer
+      ? input.email && input.email !== existingCustomer.email
+        ? await transaction.customer.update({
+            where: { id: existingCustomer.id },
+            data: { email: input.email },
+            select: { id: true },
+          })
+        : existingCustomer
+      : await transaction.customer.create({
+          data: {
+            name: input.name,
+            phone: input.phone,
+            email: input.email || null,
+          },
+          select: { id: true },
+        })
+    const existingVehicle = await transaction.vehicle.findFirst({
+      where: {
         customerId: customer.id,
         make: input.vehicleMake,
         model: input.vehicleModel,
         year: input.vehicleYear,
+        plate: null,
       },
       select: { id: true },
     })
+    const vehicle =
+      existingVehicle ??
+      (await transaction.vehicle.create({
+        data: {
+          customerId: customer.id,
+          make: input.vehicleMake,
+          model: input.vehicleModel,
+          year: input.vehicleYear,
+        },
+        select: { id: true },
+      }))
     const appointment = await transaction.appointment.create({
       data: {
         customerId: customer.id,
