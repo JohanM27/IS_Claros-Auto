@@ -3,4 +3,5 @@ export default {
   semi: false,
   trailingComma: 'all',
   printWidth: 100,
+  endOfLine: 'auto',
 }

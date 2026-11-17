@@ -8,7 +8,7 @@ Establecer una base web mantenible para una página pública y un panel administ
 
 ## Tecnologías
 
-- **Frontend:** React, TypeScript, Vite y Tailwind CSS.
+- **Frontend:** React, TypeScript, Vite, Tailwind CSS y React Router.
 - **Backend:** Node.js, Express y TypeScript.
 - **Calidad:** ESLint y Prettier.
 - **Pruebas:** Vitest y Supertest.
@@ -29,10 +29,12 @@ Establecer una base web mantenible para una página pública y un panel administ
 │   └── tsconfig.json
 ├── frontend/
 │   ├── src/
-│   │   ├── components/       # Componentes reutilizables
+│   │   ├── components/       # Componentes, tarjetas y formularios reutilizables
+│   │   ├── data/             # Catálogo de servicios de demostración
 │   │   ├── layouts/          # Estructuras de página
 │   │   ├── pages/            # Vistas de la aplicación
-│   │   └── services/         # Acceso a servicios externos
+│   │   ├── types/            # Tipos de dominio del frontend
+│   │   └── utils/            # Validación de solicitudes
 │   └── vite.config.ts
 ├── docs/
 │   └── arquitectura.md
@@ -94,18 +96,28 @@ npm test
 npm run build
 ```
 
-La suite contiene una prueba del render inicial del frontend y una prueba de integración para `GET /api/health`.
+La suite cubre las rutas públicas, navegación adaptable, catálogo, validación del formulario y el endpoint `GET /api/health`.
+
+## Página pública implementada
+
+- `/`: presentación del taller, ventajas, contacto con datos pendientes y enlaces de acción.
+- `/servicios`: catálogo adaptable de seis servicios de ejemplo.
+- `/citas`: formulario demostrativo con validación y preselección del servicio desde el catálogo.
+
+El formulario no envía ni almacena datos y su mensaje de confirmación aclara que no crea una cita real.
 
 ## Módulos previstos
 
 Los siguientes módulos forman parte del alcance futuro y no están implementados en este avance:
 
-- Página pública del taller y solicitud de citas.
-- Administración de citas, clientes y vehículos.
+- Envío real y administración de citas, incluida la consulta de su estado.
+- Gestión de clientes y vehículos.
 - Órdenes de trabajo.
 - Inventario de repuestos.
 - Facturación.
-- Usuarios, roles y reportes administrativos.
+- Inicio de sesión, usuarios, roles y panel administrativo.
+- Notificaciones por WhatsApp y pagos en línea.
+- Reportes administrativos.
 - Persistencia de datos con PostgreSQL.
 
 Consulta [docs/arquitectura.md](docs/arquitectura.md) para la descripción inicial de contexto.
