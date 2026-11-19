@@ -8,13 +8,16 @@ import { healthRouter } from './routes/health.js'
 import { apiConfig } from './config/api.js'
 import { HttpError } from './utils/httpError.js'
 import { createAuthRouter } from './modules/auth/auth.routes.js'
+import { authenticateEmployee } from './modules/auth/auth.middleware.js'
 import type { RequestHandler } from 'express'
+import { createAdminRouter } from './modules/admin/admin.routes.js'
 
 export type ApiDependencies = {
   listarServicios?: Parameters<typeof crearRutasServicios>[0]
   registrarCita?: Parameters<typeof crearRutasCitas>[0]
   consultarCita?: Parameters<typeof crearRutasCitas>[1]
   authenticateEmployee?: RequestHandler
+  admin?: Parameters<typeof createAdminRouter>[1]
 }
 
 export function createApp(dependencies: ApiDependencies = {}) {
@@ -35,7 +38,7 @@ export function createApp(dependencies: ApiDependencies = {}) {
           ),
         )
       },
-      methods: ['GET', 'POST', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       maxAge: 600,
     }),
@@ -43,6 +46,7 @@ export function createApp(dependencies: ApiDependencies = {}) {
   app.use(express.json({ limit: '16kb' }))
   app.use('/api', healthRouter)
   app.use('/api/auth', createAuthRouter(dependencies.authenticateEmployee))
+  app.use('/api/admin', createAdminRouter(dependencies.authenticateEmployee ?? authenticateEmployee, dependencies.admin))
   app.use('/api/servicios', crearRutasServicios(dependencies.listarServicios))
   app.use(
     '/api/citas',
