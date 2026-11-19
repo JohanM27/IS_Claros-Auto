@@ -141,6 +141,10 @@ Abre la URL local que imprime Vite Preview. `localhost` sirve como contexto segu
 
 La portada y el catálogo establecen título, descripción y metadatos Open Graph en el cliente. Login, formulario de citas, panel administrativo y 404 se marcan como `noindex, nofollow`; `frontend/public/robots.txt` restringe el rastreo de esas rutas y de `/api/`. No se publica sitemap todavía porque falta definir el dominio público y las URL canónicas. Como la web es una SPA sin renderizado del servidor, los metadatos de rutas secundarias se aplican después de cargar JavaScript; una publicación que requiera vistas previas sociales deterministas puede necesitar prerenderizado o SSR.
 
+## Despliegue y análisis de calidad
+
+La aplicación está preparada para compilar frontend y backend por separado; todavía no está publicada y no se ha definido dominio ni proveedor. Consulta [la guía de despliegue](docs/despliegue.md) para variables por componente, migraciones Supabase, HTTPS, configuración CORS, SonarQube Cloud y la lista de comprobación. La arquitectura C4 y las decisiones ADR están en `docs/arquitectura.md` y `docs/adr/`.
+
 ## API
 
 ### `GET /api/health`
