@@ -2,17 +2,20 @@ import { prisma } from '../../config/database.js'
 import type { CrearCitaInput } from './cita.schema.js'
 
 export async function crearRegistroCita(input: CrearCitaInput, lookupTokenHash: string) {
-  return prisma.$transaction(async (transaction) => {
-    const service = await transaction.service.findFirst({
+  const [service, existingCustomer] = await Promise.all([
+    prisma.service.findFirst({
       where: { id: input.serviceId, isActive: true },
       select: { id: true, name: true },
-    })
-    if (!service) return null
-
-    const existingCustomer = await transaction.customer.findFirst({
+    }),
+    prisma.customer.findFirst({
       where: { name: input.name, phone: input.phone },
       select: { id: true, email: true },
-    })
+    }),
+  ])
+
+  if (!service) return null
+
+  return prisma.$transaction(async (transaction) => {
     const customer = existingCustomer
       ? input.email && input.email !== existingCustomer.email
         ? await transaction.customer.update({
@@ -64,6 +67,9 @@ export async function crearRegistroCita(input: CrearCitaInput, lookupTokenHash: 
     })
 
     return { ...appointment, service }
+  }, {
+    maxWait: 15_000,
+    timeout: 30_000,
   })
 }
 

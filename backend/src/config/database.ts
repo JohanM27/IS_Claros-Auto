@@ -11,7 +11,8 @@ const pool = new Pool({
   connectionString:
     process.env.DATABASE_URL ??
     'postgresql://USER:PASSWORD@127.0.0.1:5432/claros_auto?schema=public',
-  connectionTimeoutMillis: 5_000,
+  connectionTimeoutMillis: 15_000,
+  keepAlive: true,
   max: 10,
 })
 const adapter = new PrismaPg(pool)

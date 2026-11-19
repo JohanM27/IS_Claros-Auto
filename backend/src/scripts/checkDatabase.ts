@@ -10,6 +10,7 @@ async function checkDatabase() {
 
   try {
     await prisma.$connect()
+    await prisma.$queryRaw`SELECT 1`
     console.info('Database connection successful.')
   } catch {
     console.error('Database connection failed. Check DATABASE_URL and database availability.')
