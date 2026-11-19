@@ -1,12 +1,13 @@
 # Claros Auto
 
-Claros Auto es una aplicación web para apoyar la administración de un taller automotriz. Este avance conecta el catálogo público con una API Express y agrega persistencia PostgreSQL para clientes, vehículos, servicios y solicitudes de citas.
+Claros Auto es una aplicación web para apoyar la administración de un taller automotriz. El sistema ofrece un catálogo público, solicitudes de citas guardadas en Supabase PostgreSQL, inicio de sesión de empleados con Supabase Auth y un panel inicial para recepción y administración.
 
 ## Tecnologías
 
 - **Frontend:** React, TypeScript, Vite, Tailwind CSS y React Router.
 - **Backend:** Node.js, Express 5 y TypeScript.
 - **Persistencia:** PostgreSQL, Prisma ORM 7 y el adaptador `pg`.
+- **Autenticación:** Supabase Auth en el navegador; Express verifica cada token con Supabase y obtiene el rol desde `StaffProfile`.
 - **Validación HTTP:** Zod, CORS de orígenes permitidos y límite de solicitudes para registrar citas.
 - **Calidad:** ESLint, Prettier, Vitest y Supertest.
 
@@ -25,7 +26,8 @@ backend/
     └── server.ts           # Inicio del servidor
 frontend/src/
 ├── components/             # Catálogo, formulario y componentes compartidos
-├── pages/                  # Inicio, servicios y solicitudes de cita
+├── pages/                  # Sitio público, login y panel administrativo
+├── auth/                   # Sesión de empleado con Supabase Auth
 ├── services/api.ts         # Cliente HTTP
 ├── types/                  # Tipos compartidos de interfaz
 └── utils/                  # Validación del formulario
@@ -66,9 +68,21 @@ Define `DATABASE_URL` en `backend/.env`, por ejemplo para PostgreSQL local:
 DATABASE_URL="postgresql://USUARIO:CONTRASENA@localhost:5432/claros_auto?schema=public"
 PORT=3000
 CORS_ORIGIN=http://localhost:5173
+SUPABASE_URL=https://TU_PROYECTO.supabase.co
+SUPABASE_ANON_KEY=TU_CLAVE_PUBLICA_ANON_O_PUBLISHABLE
 ```
 
 Usa credenciales propias fuera del control de versiones. Para proveedores administrados, usa el URL de conexión PostgreSQL que proporciona el proveedor y sus parámetros TLS/pooling. `DATABASE_URL` solo se usa en el backend. El cliente web usa `VITE_API_URL=/api` y el proxy de Vite reenvía esas rutas a `http://localhost:3000` durante el desarrollo.
+
+Configura también `frontend/.env` (copia `frontend/.env.example`) con:
+
+```dotenv
+VITE_API_URL=/api
+VITE_SUPABASE_URL=https://TU_PROYECTO.supabase.co
+VITE_SUPABASE_ANON_KEY=TU_CLAVE_PUBLICA_ANON_O_PUBLISHABLE
+```
+
+La clave anon/publishable es pública y puede estar en el bundle del navegador; nunca uses `service_role` en el frontend. `SUPABASE_ANON_KEY` en el backend es la misma clave pública para llamar a Auth. No compartas `DATABASE_URL` ni contraseñas.
 
 ## Base de datos y migraciones
 
@@ -159,6 +173,31 @@ Devuelve estado, fechas y servicio; no incluye nombre, teléfono ni correo del c
 
 El endpoint público de creación tiene un límite de 10 solicitudes cada 15 minutos por origen de red. Configura los orígenes web en `CORS_ORIGIN`, separados por coma.
 
+## Autenticación y permisos
+
+La página `/login` inicia sesión con correo y contraseña de Supabase Auth; el sistema no ofrece registro de empleados. Supabase guarda la sesión en `sessionStorage` (se elimina al cerrar la pestaña). Cada ruta privada envía el access token al API. Express valida identidad en Supabase y busca el rol en `StaffProfile`; nunca acepta roles desde el navegador ni desde metadatos editables.
+
+| Rol             | Permisos actuales                               |
+| --------------- | ----------------------------------------------- |
+| `ADMINISTRADOR` | Acceso al panel y gestión de citas pendientes   |
+| `RECEPCIONISTA` | Consulta, confirmación y cancelación de citas   |
+| `MECANICO`      | Sin acceso al panel de recepción en este avance |
+
+Solo `ADMINISTRADOR` y `RECEPCIONISTA` acceden a `GET /api/admin/citas` y `PATCH /api/admin/citas/:id/estado`. El cambio de estado se ejecuta en PostgreSQL de forma condicional: solo una cita `PENDIENTE` puede pasar a `CONFIRMADA` o `CANCELADA`; los estados terminales no se reabren desde este endpoint. El backend devuelve `401` si falta o no es válido el token y `403` si falta el perfil o el rol no autoriza la acción.
+
+### Alta administrativa de empleados
+
+1. En Supabase Dashboard, crea al empleado desde **Authentication → Users → Add user** y establece su contraseña mediante el flujo autorizado.
+2. Copia el UUID asignado al usuario.
+3. Un administrador autorizado asigna el rol con SQL Editor. No se concede acceso solo por crear una cuenta:
+
+```sql
+INSERT INTO public."StaffProfile" ("userId", role, "displayName")
+VALUES ('UUID_DEL_USUARIO_AUTH', 'RECEPCIONISTA', 'Nombre del empleado');
+```
+
+Valores válidos: `ADMINISTRADOR`, `RECEPCIONISTA`, `MECANICO`. La tabla tiene RLS activado y acceso directo revocado para los roles `anon` y `authenticated`; el API consulta mediante su conexión de servidor.
+
 ## Verificaciones
 
 Desde la raíz:
@@ -170,14 +209,15 @@ npm test
 npm run build
 ```
 
-Las pruebas HTTP de citas usan una persistencia simulada para comprobar rutas, validación, respuestas, token y protección sin requerir PostgreSQL. Las migraciones se pueden aplicar y comprobar contra una instancia PostgreSQL local o de prueba; nunca apuntes pruebas destructivas a producción.
+Las pruebas HTTP usan repositorios y servicios inyectados para verificar validación, tokens, autenticación, permisos y transiciones sin escribir en una base compartida. La conexión real se comprueba con `npm --prefix backend run db:check`; no se realizan escrituras destructivas en producción.
 
 ## Alcance y limitaciones actuales
 
 - El catálogo y el formulario usan la API y guardan solicitudes cuando hay una base accesible y migrada.
 - La disponibilidad de una hora no se confirma automáticamente; el taller debe confirmar la solicitud.
-- La consulta usa un token privado entregado al crear la solicitud. Aún no hay autenticación administrativa ni recuperación de tokens.
-- No se incluyen facturación, inventario, órdenes de trabajo, roles, notificaciones ni pagos.
+- La disponibilidad de horarios sigue dependiendo de la confirmación del taller.
+- El panel actual se limita a consultar, confirmar y cancelar solicitudes; usuarios y otros módulos quedan pendientes.
+- No se incluyen facturación, inventario, órdenes de trabajo, notificaciones, reportes ni pagos.
 
 ## Código de verificación académica
 

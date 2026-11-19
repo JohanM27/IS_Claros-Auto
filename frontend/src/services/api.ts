@@ -80,3 +80,46 @@ export async function createAppointment(
     }),
   })
 }
+
+export type EmployeeRole = 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO'
+export type EmployeeIdentity = {
+  id: string
+  email: string | null
+  role: EmployeeRole
+  displayName: string | null
+}
+export type AdminAppointment = {
+  id: string
+  status: 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA' | 'COMPLETADA'
+  requestedAt: string
+  createdAt: string
+  notes: string | null
+  customer: { name: string; phone: string; email: string | null }
+  vehicle: { make: string; model: string; year: number }
+  service: { name: string }
+}
+
+async function authenticatedRequest<T>(path: string, accessToken: string, init?: RequestInit) {
+  return request<T>(path, {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
+  })
+}
+
+export function getEmployeeIdentity(accessToken: string) {
+  return authenticatedRequest<EmployeeIdentity>('/auth/me', accessToken)
+}
+
+export function getAdminAppointments(accessToken: string) {
+  return authenticatedRequest<AdminAppointment[]>('/admin/citas', accessToken)
+}
+
+export function setAppointmentStatus(
+  accessToken: string,
+  id: string,
+  status: 'CONFIRMADA' | 'CANCELADA',
+) {
+  return authenticatedRequest<
+    Pick<AdminAppointment, 'id' | 'status' | 'requestedAt' | 'createdAt'>
+  >(`/admin/citas/${id}/estado`, accessToken, { method: 'PATCH', body: JSON.stringify({ status }) })
+}

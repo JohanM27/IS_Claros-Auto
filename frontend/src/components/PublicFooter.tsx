@@ -16,6 +16,12 @@ export function PublicFooter() {
           >
             Solicitar una cita
           </Link>
+          <Link
+            to="/login"
+            className="mt-3 block rounded-sm text-sm font-semibold text-white underline decoration-blue-400 underline-offset-4 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400"
+          >
+            Acceso para empleados
+          </Link>
         </div>
       </div>
     </footer>

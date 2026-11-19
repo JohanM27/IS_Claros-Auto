@@ -4,9 +4,39 @@
   "schema": "public",
   "source": "backend/prisma/schema.prisma",
   "enums": {
-    "AppointmentStatus": ["PENDIENTE", "CONFIRMADA", "CANCELADA", "COMPLETADA"]
+    "AppointmentStatus": ["PENDIENTE", "CONFIRMADA", "CANCELADA", "COMPLETADA"],
+    "StaffRole": ["ADMINISTRADOR", "RECEPCIONISTA", "MECANICO"]
   },
   "models": [
+    {
+      "name": "StaffProfile",
+      "table": "StaffProfile",
+      "fields": [
+        {
+          "name": "userId",
+          "type": "String",
+          "databaseType": "UUID",
+          "primaryKey": true,
+          "foreignKey": "auth.users.id"
+        },
+        { "name": "role", "type": "StaffRole", "databaseType": "StaffRole" },
+        {
+          "name": "displayName",
+          "type": "String",
+          "databaseType": "VARCHAR(150)",
+          "optional": true
+        },
+        {
+          "name": "createdAt",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        },
+        { "name": "updatedAt", "type": "DateTime", "databaseType": "TIMESTAMPTZ(3)" }
+      ],
+      "relations": [],
+      "indexes": []
+    },
     {
       "name": "Service",
       "table": "Service",
