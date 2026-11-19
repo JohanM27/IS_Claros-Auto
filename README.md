@@ -124,6 +124,19 @@ npm --prefix frontend run dev
 
 La web suele estar en `http://localhost:5173` y la API en `http://localhost:3000`. Comprueba el estado en `http://localhost:3000/api/health`.
 
+## Aplicación web progresiva
+
+La compilación de producción incluye un Web App Manifest, iconos del taller y un service worker que conserva el shell público para abrirlo sin conexión. El único endpoint de API que se puede guardar es el catálogo público `GET /api/servicios`; el catálogo disponible offline debe haberse cargado anteriormente en ese dispositivo. Login, citas y rutas/endpoints de administración requieren red y no se almacenan en caché ni se sincronizan después.
+
+Para probar la instalación en desarrollo local, construye y sirve la versión de producción:
+
+```bash
+npm run build
+npm --prefix frontend run preview -- --host 127.0.0.1
+```
+
+Abre la URL local que imprime Vite Preview. `localhost` sirve como contexto seguro para la prueba; en producción se requiere HTTPS. El menú del navegador permite instalar la app cuando el navegador admite instalación de PWAs. La experiencia offline sirve contenido público estático y el catálogo previamente consultado, no permite solicitar ni gestionar citas.
+
 ## API
 
 ### `GET /api/health`
