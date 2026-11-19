@@ -1,0 +1,199 @@
+{
+  "database": "PostgreSQL",
+  "orm": "Prisma",
+  "schema": "public",
+  "source": "backend/prisma/schema.prisma",
+  "enums": {
+    "AppointmentStatus": ["PENDIENTE", "CONFIRMADA", "CANCELADA", "COMPLETADA"]
+  },
+  "models": [
+    {
+      "name": "Service",
+      "table": "Service",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "databaseType": "TEXT",
+          "primaryKey": true,
+          "default": "cuid()"
+        },
+        { "name": "slug", "type": "String", "databaseType": "VARCHAR(80)", "unique": true },
+        { "name": "name", "type": "String", "databaseType": "VARCHAR(120)" },
+        { "name": "description", "type": "String", "databaseType": "VARCHAR(500)" },
+        { "name": "isActive", "type": "Boolean", "databaseType": "BOOLEAN", "default": true },
+        {
+          "name": "createdAt",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        }
+      ],
+      "relations": [
+        {
+          "field": "appointments",
+          "target": "Appointment",
+          "cardinality": "one-to-many",
+          "foreignKey": "Appointment.serviceId"
+        }
+      ],
+      "indexes": [["isActive"]]
+    },
+    {
+      "name": "Customer",
+      "table": "Customer",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "databaseType": "UUID",
+          "primaryKey": true,
+          "default": "uuid()"
+        },
+        { "name": "name", "type": "String", "databaseType": "VARCHAR(150)" },
+        { "name": "phone", "type": "String", "databaseType": "VARCHAR(30)" },
+        { "name": "email", "type": "String", "databaseType": "VARCHAR(254)", "optional": true },
+        {
+          "name": "createdAt",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        }
+      ],
+      "relations": [
+        {
+          "field": "vehicles",
+          "target": "Vehicle",
+          "cardinality": "one-to-many",
+          "foreignKey": "Vehicle.customerId"
+        },
+        {
+          "field": "appointments",
+          "target": "Appointment",
+          "cardinality": "one-to-many",
+          "foreignKey": "Appointment.customerId"
+        }
+      ],
+      "indexes": [["phone"]]
+    },
+    {
+      "name": "Vehicle",
+      "table": "Vehicle",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "databaseType": "UUID",
+          "primaryKey": true,
+          "default": "uuid()"
+        },
+        {
+          "name": "customerId",
+          "type": "String",
+          "databaseType": "UUID",
+          "foreignKey": "Customer.id"
+        },
+        { "name": "make", "type": "String", "databaseType": "VARCHAR(80)" },
+        { "name": "model", "type": "String", "databaseType": "VARCHAR(100)" },
+        { "name": "year", "type": "Int", "databaseType": "SMALLINT" },
+        { "name": "plate", "type": "String", "databaseType": "VARCHAR(20)", "optional": true },
+        {
+          "name": "createdAt",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        }
+      ],
+      "relations": [
+        {
+          "field": "customer",
+          "target": "Customer",
+          "cardinality": "many-to-one",
+          "foreignKey": "customerId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        },
+        {
+          "field": "appointments",
+          "target": "Appointment",
+          "cardinality": "one-to-many",
+          "foreignKey": "Appointment.vehicleId"
+        }
+      ],
+      "indexes": [["customerId"], ["plate"]]
+    },
+    {
+      "name": "Appointment",
+      "table": "Appointment",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "databaseType": "UUID",
+          "primaryKey": true,
+          "default": "uuid()"
+        },
+        {
+          "name": "customerId",
+          "type": "String",
+          "databaseType": "UUID",
+          "foreignKey": "Customer.id"
+        },
+        {
+          "name": "vehicleId",
+          "type": "String",
+          "databaseType": "UUID",
+          "foreignKey": "Vehicle.id"
+        },
+        {
+          "name": "serviceId",
+          "type": "String",
+          "databaseType": "TEXT",
+          "foreignKey": "Service.id"
+        },
+        { "name": "requestedAt", "type": "DateTime", "databaseType": "TIMESTAMPTZ(3)" },
+        { "name": "notes", "type": "String", "databaseType": "VARCHAR(1000)", "optional": true },
+        {
+          "name": "status",
+          "type": "AppointmentStatus",
+          "databaseType": "AppointmentStatus",
+          "default": "PENDIENTE"
+        },
+        { "name": "lookupTokenHash", "type": "String", "databaseType": "CHAR(64)" },
+        {
+          "name": "createdAt",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        }
+      ],
+      "relations": [
+        {
+          "field": "customer",
+          "target": "Customer",
+          "cardinality": "many-to-one",
+          "foreignKey": "customerId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        },
+        {
+          "field": "vehicle",
+          "target": "Vehicle",
+          "cardinality": "many-to-one",
+          "foreignKey": "vehicleId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        },
+        {
+          "field": "service",
+          "target": "Service",
+          "cardinality": "many-to-one",
+          "foreignKey": "serviceId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        }
+      ],
+      "indexes": [["customerId"], ["vehicleId"], ["serviceId"], ["status", "requestedAt"]]
+    }
+  ]
+}

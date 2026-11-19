@@ -2,10 +2,42 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { App } from './App'
 
+const { getServices } = vi.hoisted(() => ({ getServices: vi.fn() }))
+
+vi.mock('./services/api', () => ({
+  getServices,
+  createAppointment: vi.fn(),
+}))
+
 afterEach(cleanup)
+beforeEach(() => {
+  getServices.mockResolvedValue([
+    { id: 'svc-1', slug: 'cambio-aceite', name: 'Cambio de aceite', description: 'Servicio' },
+    {
+      id: 'svc-2',
+      slug: 'diagnostico-automotriz',
+      name: 'Diagnóstico automotriz',
+      description: 'Servicio',
+    },
+    {
+      id: 'svc-3',
+      slug: 'reparacion-frenos',
+      name: 'Reparación de frenos',
+      description: 'Servicio',
+    },
+    {
+      id: 'svc-4',
+      slug: 'mantenimiento-preventivo',
+      name: 'Mantenimiento preventivo',
+      description: 'Servicio',
+    },
+    { id: 'svc-5', slug: 'suspension', name: 'Suspensión', description: 'Servicio' },
+    { id: 'svc-6', slug: 'revision-general', name: 'Revisión general', description: 'Servicio' },
+  ])
+})
 
 function renderApp(path = '/') {
   return render(
@@ -28,7 +60,7 @@ describe('rutas públicas', () => {
     )
 
     expect(screen.getByRole('heading', { name: 'Servicios para tu vehículo' })).toBeTruthy()
-    expect(screen.getAllByRole('article')).toHaveLength(6)
+    expect(await screen.findAllByRole('article')).toHaveLength(6)
   })
 
   it('abre el menú y navega con teclado', async () => {
@@ -65,10 +97,10 @@ describe('rutas públicas', () => {
     const user = userEvent.setup()
     renderApp('/servicios')
 
-    await user.click(screen.getAllByRole('link', { name: 'Solicitar este servicio' })[0])
+    await user.click((await screen.findAllByRole('link', { name: 'Solicitar este servicio' }))[0])
 
     const serviceField = screen.getByLabelText(/servicio solicitado/i) as HTMLSelectElement
-    expect(serviceField.value).toBe('Cambio de aceite')
+    await vi.waitFor(() => expect(serviceField.value).toBe('svc-1'))
     expect(
       screen.getByRole('heading', { name: 'Cuéntanos qué necesita tu vehículo.' }),
     ).toBeTruthy()
