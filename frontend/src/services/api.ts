@@ -82,7 +82,12 @@ export async function createAppointment(
 }
 
 export type EmployeeRole = 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO'
-export type EmployeeIdentity = { id: string; email: string | null; role: EmployeeRole; displayName: string | null }
+export type EmployeeIdentity = {
+  id: string
+  email: string | null
+  role: EmployeeRole
+  displayName: string | null
+}
 export type AdminAppointment = {
   id: string
   status: 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA' | 'COMPLETADA'
@@ -109,8 +114,12 @@ export function getAdminAppointments(accessToken: string) {
   return authenticatedRequest<AdminAppointment[]>('/admin/citas', accessToken)
 }
 
-export function setAppointmentStatus(accessToken: string, id: string, status: 'CONFIRMADA' | 'CANCELADA') {
-  return authenticatedRequest<Pick<AdminAppointment, 'id' | 'status' | 'requestedAt' | 'createdAt'>>(
-    `/admin/citas/${id}/estado`, accessToken, { method: 'PATCH', body: JSON.stringify({ status }) },
-  )
+export function setAppointmentStatus(
+  accessToken: string,
+  id: string,
+  status: 'CONFIRMADA' | 'CANCELADA',
+) {
+  return authenticatedRequest<
+    Pick<AdminAppointment, 'id' | 'status' | 'requestedAt' | 'createdAt'>
+  >(`/admin/citas/${id}/estado`, accessToken, { method: 'PATCH', body: JSON.stringify({ status }) })
 }
