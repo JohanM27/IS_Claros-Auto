@@ -27,6 +27,7 @@ async function precacheAppShell() {
     '/icons/claros-auto.svg',
     '/icons/claros-auto-192.png',
     '/icons/claros-auto-512.png',
+    '/robots.txt',
     '/sw.js',
   ])
   await Promise.all(

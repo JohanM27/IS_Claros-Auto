@@ -1,10 +1,16 @@
 import { Link } from 'react-router-dom'
 import { AppointmentForm } from '../components/AppointmentForm'
 import { PageHeading } from '../components/PageHeading'
+import { PageMetadata } from '../components/PageMetadata'
 
 export function AppointmentsPage() {
   return (
     <div className="mx-auto grid max-w-7xl gap-12 px-5 py-16 sm:px-8 sm:py-20 lg:grid-cols-[0.75fr_1.25fr] lg:gap-16">
+      <PageMetadata
+        title="Solicitar cita"
+        description="Envía a Claros Auto tu fecha preferida y los datos necesarios para que el taller revise tu solicitud de cita."
+        indexable={false}
+      />
       <div>
         <PageHeading
           eyebrow="Solicitud de atención"

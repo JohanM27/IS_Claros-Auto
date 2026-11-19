@@ -137,6 +137,10 @@ npm --prefix frontend run preview -- --host 127.0.0.1
 
 Abre la URL local que imprime Vite Preview. `localhost` sirve como contexto seguro para la prueba; en producción se requiere HTTPS. El menú del navegador permite instalar la app cuando el navegador admite instalación de PWAs. La experiencia offline sirve contenido público estático y el catálogo previamente consultado, no permite solicitar ni gestionar citas.
 
+## SEO y páginas de error
+
+La portada y el catálogo establecen título, descripción y metadatos Open Graph en el cliente. Login, formulario de citas, panel administrativo y 404 se marcan como `noindex, nofollow`; `frontend/public/robots.txt` restringe el rastreo de esas rutas y de `/api/`. No se publica sitemap todavía porque falta definir el dominio público y las URL canónicas. Como la web es una SPA sin renderizado del servidor, los metadatos de rutas secundarias se aplican después de cargar JavaScript; una publicación que requiera vistas previas sociales deterministas puede necesitar prerenderizado o SSR.
+
 ## API
 
 ### `GET /api/health`

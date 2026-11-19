@@ -100,4 +100,10 @@ describe('inicio de sesión de empleados', () => {
     expect(screen.queryByRole('link', { name: /registr/i })).toBeNull()
     expect(screen.getByText(/cuenta de empleado asignada/i)).toBeTruthy()
   })
+
+  it('marca el acceso como privado para buscadores', async () => {
+    renderLogin()
+    await waitFor(() => expect(document.title).toBe('Acceso de empleados | Claros Auto'))
+    expect(document.head.querySelector('meta[name="robots"]')?.content).toBe('noindex, nofollow')
+  })
 })

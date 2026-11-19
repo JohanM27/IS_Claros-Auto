@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom'
+import { PageMetadata } from '../components/PageMetadata'
 
 const benefits = [
   {
@@ -21,6 +22,10 @@ const benefits = [
 export function HomePage() {
   return (
     <>
+      <PageMetadata
+        title="Taller automotriz"
+        description="Conoce el catálogo de servicios de Claros Auto y envía una solicitud de atención para tu vehículo."
+      />
       <section className="relative isolate overflow-hidden bg-slate-950 text-white">
         <div
           aria-hidden="true"

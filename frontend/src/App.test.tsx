@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -48,6 +48,29 @@ function renderApp(path = '/') {
 }
 
 describe('rutas públicas', () => {
+  it('define metadatos descriptivos para la página pública', async () => {
+    renderApp()
+
+    await waitFor(() => expect(document.title).toBe('Taller automotriz | Claros Auto'))
+    expect(document.head.querySelector('meta[name="description"]')?.content).toContain(
+      'catálogo de servicios',
+    )
+    expect(document.head.querySelector('meta[property="og:title"]')?.content).toBe(
+      'Taller automotriz | Claros Auto',
+    )
+    expect(document.head.querySelector('meta[name="robots"]')?.content).toBe('index, follow')
+  })
+
+  it('muestra una página 404 accesible con navegación útil', () => {
+    renderApp('/ruta-inexistente')
+
+    expect(screen.getByRole('heading', { name: 'No encontramos esa página' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: 'Volver al inicio' }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: 'Ver servicios' }).getAttribute('href')).toBe(
+      '/servicios',
+    )
+  })
+
   it('muestra el enlace de acceso para empleados', () => {
     renderApp()
     const employeeLink = screen.getByRole('link', { name: 'Acceso para empleados' })
