@@ -11,7 +11,7 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const returnTo =
-    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/'
+    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/admin'
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()

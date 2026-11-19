@@ -83,6 +83,13 @@ describe('panel administrativo', () => {
     expect(await screen.findByText('CONFIRMADA')).toBeTruthy()
   })
 
+  it('permite cerrar la sesión desde el panel', async () => {
+    const user = userEvent.setup()
+    renderAdmin()
+    await user.click(await screen.findByRole('button', { name: 'Cerrar sesión' }))
+    expect(mocks.signOut).toHaveBeenCalledOnce()
+  })
+
   it('explica cuando la cuenta no tiene perfil autorizado', async () => {
     mocks.identity.mockRejectedValue(new Error('sin rol'))
     renderAdmin()

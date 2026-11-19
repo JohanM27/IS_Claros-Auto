@@ -48,6 +48,12 @@ function renderApp(path = '/') {
 }
 
 describe('rutas públicas', () => {
+  it('muestra el enlace de acceso para empleados', () => {
+    renderApp()
+    const employeeLink = screen.getByRole('link', { name: 'Acceso para empleados' })
+    expect(employeeLink.getAttribute('href')).toBe('/login')
+  })
+
   it('muestra la página principal y navega al catálogo', async () => {
     const user = userEvent.setup()
     renderApp()
