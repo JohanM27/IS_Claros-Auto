@@ -11,7 +11,7 @@ C4Context
   title Contexto de Claros Auto
   Person(cliente, "Cliente", "Consulta servicios y solicita citas")
   Person(empleado, "Empleado del taller", "Accede al panel según su rol")
-  System(claros, "Claros Auto", "Sitio público y API de administración de citas")
+  System(claros, "Claros Auto", "Sitio público y sistema administrativo del taller")
   System_Ext(supabase, "Supabase", "Auth y PostgreSQL administrado")
   Rel(cliente, claros, "Consulta servicios y solicita una cita", "HTTPS")
   Rel(empleado, claros, "Inicia sesión y gestiona citas", "HTTPS")
@@ -27,7 +27,7 @@ C4Container
   Person(empleado, "Empleado", "Navegador autenticado")
   System_Boundary(claros, "Claros Auto") {
     Container(web, "Frontend", "React, TypeScript, Vite", "Sitio público, autenticación y panel")
-    Container(api, "API", "Node.js, Express, Prisma", "Validación, autorización y lógica de citas")
+    Container(api, "API", "Node.js, Express, Prisma", "Validación, autorización, citas y órdenes")
   }
   System_Ext(auth, "Supabase Auth", "Identidad y sesiones de empleados")
   System_Ext(db, "Supabase PostgreSQL", "Datos del taller y perfiles de empleados")
@@ -43,11 +43,13 @@ C4Container
 
 - `frontend/src/components`: formulario de cita, tarjetas de servicio y componentes compartidos.
 - `frontend/src/pages`: vistas de inicio, catálogo y citas.
+- `frontend/src/pages/WorkOrdersPage.tsx`: listado inicial y estado vacío de órdenes de trabajo.
 - `frontend/src/services/api.ts`: cliente HTTP que transforma la entrada del formulario al contrato REST.
 - `backend/src/config/database.ts`: `pg.Pool`, adaptador Prisma y cliente singleton.
 - `backend/src/config/api.ts`: orígenes CORS permitidos.
 - `backend/src/modules/servicios`: consulta de servicios activos.
 - `backend/src/modules/citas`: validación Zod, rutas, controladores, lógica de token y persistencia.
+- `backend/src/modules/ordenesTrabajo`: consulta administrativa de órdenes protegida por rol.
 - `backend/src/middleware/errorHandler.ts`: formato común de errores sin detalles internos.
 - `backend/prisma/schema.prisma`: esquema relacional fuente.
 - `backend/prisma/migrations`: migraciones versionadas.
@@ -63,6 +65,9 @@ erDiagram
   Customer ||--o{ Appointment : solicita
   Vehicle ||--o{ Appointment : corresponde
   Service ||--o{ Appointment : seleccionada
+  Customer ||--o{ WorkOrder : solicita
+  Vehicle ||--o{ WorkOrder : corresponde
+  Appointment ||--o| WorkOrder : origina
 
   Customer {
     uuid id PK
@@ -99,9 +104,25 @@ erDiagram
     char lookupTokenHash
     timestamptz createdAt
   }
+  WorkOrder {
+    uuid id PK
+    varchar numeroOrden UK
+    uuid clienteId FK
+    uuid vehiculoId FK
+    uuid citaId FK "opcional y unico"
+    varchar descripcionProblema
+    varchar observaciones "opcional"
+    varchar mecanicoResponsable "opcional, texto sin Auth"
+    WorkOrderStatus estado
+    timestamptz fechaIngreso
+    timestamptz fechaCreacion
+    timestamptz fechaActualizacion
+  }
 ```
 
 `AppointmentStatus` tiene los valores `PENDIENTE`, `CONFIRMADA`, `CANCELADA` y `COMPLETADA`; las citas nuevas siempre comienzan como `PENDIENTE`. Las claves foráneas restringen la eliminación de registros referenciados. Hay índices para teléfonos, relaciones, estado y fecha. El token de consulta sin procesar nunca se guarda; solo su hash SHA-256.
+
+`WorkOrderStatus` contiene `ABIERTA`, `EN_DIAGNOSTICO`, `EN_PROCESO`, `FINALIZADA` y `CANCELADA`. Una orden puede crearse sin cita; si se vincula una cita, la relación es única y opcional. `mecanicoResponsable` es texto descriptivo, sin clave foránea a `auth.users` ni a `StaffProfile`. La migración se versiona en el repositorio y debe aplicarse manualmente durante el siguiente despliegue controlado; no se ha ejecutado contra Supabase en este avance.
 
 El archivo [modelo-datos.json](modelo-datos.json) representa los mismos modelos, campos, tipos, valores enum y relaciones que `schema.prisma`.
 
@@ -116,6 +137,7 @@ El archivo [modelo-datos.json](modelo-datos.json) representa los mismos modelos,
 | `GET /api/auth/me`                  | Verifica sesión e identidad de empleado.                 | `200 { data: ... }`                                |
 | `GET /api/admin/citas`              | Lista citas para recepción y administración.             | `200 { data: [...] }`                              |
 | `PATCH /api/admin/citas/:id/estado` | Confirma o cancela una cita pendiente.                   | `200 { data: ... }`                                |
+| `GET /api/admin/ordenes`            | Lista órdenes para administración y recepción.           | `200 { data: [...] }`                              |
 
 `GET /api/citas/:id` requiere `Authorization: Bearer <lookupToken>`. Un token faltante o mal formado responde `401`; un token no coincidente devuelve `404` para no confirmar si existe la cita. Ningún endpoint ofrece un listado público de citas. Las respuestas de consulta usan `Cache-Control: no-store`.
 
@@ -138,12 +160,32 @@ Supabase Auth administra credenciales, login y sesiones. React usa `@supabase/su
 
 El cliente envía el access token en `Authorization: Bearer ...`. Express valida el token con Supabase y consulta `StaffProfile` con el UUID verificado. La autorización de roles ocurre en el backend. Si Supabase no está configurado o no responde, la API falla de forma cerrada (`503`); un token ausente/inválido devuelve `401`; un empleado sin perfil o sin permisos devuelve `403`. No se aceptan roles en solicitudes ni metadatos editables.
 
-`StaffProfile` enlaza el UUID de `auth.users` con `ADMINISTRADOR`, `RECEPCIONISTA` o `MECANICO`. La migración activa RLS y revoca privilegios SQL de `anon` y `authenticated`; el backend conserva su conexión PostgreSQL. Las cuentas se crean mediante el Dashboard y su rol se asigna administrativamente. No existe endpoint para asignar roles.
+`StaffProfile` enlaza el UUID de `auth.users` con `ADMINISTRADOR`, `RECEPCIONISTA` o el valor heredado `MECANICO`. Solo administración y recepción pueden iniciar una sesión de la aplicación. El middleware de Express rechaza el perfil `MECANICO` antes de crear la identidad de empleado, y el frontend cierra la sesión si el API no autoriza la cuenta. La migración activa RLS y revoca privilegios SQL de `anon` y `authenticated`; el backend conserva su conexión PostgreSQL. Las cuentas autorizadas se crean mediante el Dashboard y su rol se asigna administrativamente. No existe endpoint para asignar roles.
+
+El enum `MECANICO` se conserva temporalmente para no alterar datos existentes. No se consultaron ni modificaron perfiles de Supabase. Para retirar de forma segura perfiles heredados, inspecciona primero los registros y confirma con el administrador qué cuentas corresponden a mecánicos:
+
+```sql
+SELECT "userId", "displayName", role
+FROM public."StaffProfile"
+WHERE role = 'MECANICO';
+```
+
+Tras validar cada UUID y aprobar la revocación, se puede retirar únicamente la asignación de rol (esto no elimina la cuenta `auth.users`):
+
+```sql
+DELETE FROM public."StaffProfile"
+WHERE "userId" = 'UUID_VERIFICADO'
+  AND role = 'MECANICO';
+```
+
+Si la cuenta de Supabase Auth también se debe deshabilitar o eliminar, hazlo por separado en el Dashboard tras revisar su uso y retención. No conviertas automáticamente un perfil de mecánico a recepción/administración ni elimines cuentas o historial. El enum puede retirarse en otra migración solo después de verificar que ya no hay filas `MECANICO` y evaluar los datos existentes.
 
 | Acción                                | ADMINISTRADOR | RECEPCIONISTA | MECANICO |
 | ------------------------------------- | ------------- | ------------- | -------- |
+| Iniciar sesión en la aplicación       | Sí            | Sí            | No       |
 | Consultar citas privadas              | Sí            | Sí            | No       |
 | Confirmar/cancelar citas pendientes   | Sí            | Sí            | No       |
+| Consultar órdenes de trabajo          | Sí            | Sí            | No       |
 | Reabrir una cita confirmada/cancelada | No            | No            | No       |
 
 El estado se actualiza con una operación condicional en PostgreSQL que solo cambia filas `PENDIENTE`. Las respuestas administrativas usan `Cache-Control: no-store` porque contienen datos personales.
@@ -154,4 +196,4 @@ Configura `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` en `frontend/.env`, y `
 
 `npm test` ejercita rutas públicas, autenticación, permisos y cambios administrativos con servicios inyectados, sin escribir en una base compartida. `npm --prefix backend run db:validate` valida el esquema y `db:check` verifica conexión, tablas y migraciones registradas. La suite contra PostgreSQL debe apuntar a una base de pruebas aislada; no se ejecutan escrituras de prueba en producción.
 
-No se implementan disponibilidad/calendario ni confirmación automática; el taller confirma cada solicitud desde el panel. La consulta pública sigue requiriendo el token de cita que se muestra una vez al registrarla. Administración de empleados, inventario, facturación y órdenes de trabajo quedan pendientes.
+No se implementan disponibilidad/calendario ni confirmación automática; el taller confirma cada solicitud desde el panel. La consulta pública sigue requiriendo el token de cita que se muestra una vez al registrarla. Las órdenes de trabajo en este avance son solo modelo, consulta y pantalla inicial; no incluyen creación, edición, transición de estado, repuestos ni facturación. Administración de empleados, inventario y facturación quedan pendientes.

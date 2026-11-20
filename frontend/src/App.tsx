@@ -6,12 +6,14 @@ import { HomePage } from './pages/HomePage'
 import { LoginPage } from './pages/LoginPage'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ServicesPage } from './pages/ServicesPage'
+import { WorkOrdersPage } from './pages/WorkOrdersPage'
 
 export function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/admin" element={<AdminPage />} />
+      <Route path="/admin/ordenes" element={<WorkOrdersPage />} />
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/servicios" element={<ServicesPage />} />

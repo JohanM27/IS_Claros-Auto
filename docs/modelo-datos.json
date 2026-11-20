@@ -5,7 +5,8 @@
   "source": "backend/prisma/schema.prisma",
   "enums": {
     "AppointmentStatus": ["PENDIENTE", "CONFIRMADA", "CANCELADA", "COMPLETADA"],
-    "StaffRole": ["ADMINISTRADOR", "RECEPCIONISTA", "MECANICO"]
+    "StaffRole": ["ADMINISTRADOR", "RECEPCIONISTA", "MECANICO"],
+    "WorkOrderStatus": ["ABIERTA", "EN_DIAGNOSTICO", "EN_PROCESO", "FINALIZADA", "CANCELADA"]
   },
   "models": [
     {
@@ -102,6 +103,12 @@
           "target": "Appointment",
           "cardinality": "one-to-many",
           "foreignKey": "Appointment.customerId"
+        },
+        {
+          "field": "workOrders",
+          "target": "WorkOrder",
+          "cardinality": "one-to-many",
+          "foreignKey": "WorkOrder.clienteId"
         }
       ],
       "indexes": [["phone"]]
@@ -148,6 +155,12 @@
           "target": "Appointment",
           "cardinality": "one-to-many",
           "foreignKey": "Appointment.vehicleId"
+        },
+        {
+          "field": "workOrders",
+          "target": "WorkOrder",
+          "cardinality": "one-to-many",
+          "foreignKey": "WorkOrder.vehiculoId"
         }
       ],
       "indexes": [["customerId"], ["plate"]]
@@ -221,9 +234,118 @@
           "foreignKey": "serviceId",
           "onDelete": "RESTRICT",
           "onUpdate": "CASCADE"
+        },
+        {
+          "field": "workOrder",
+          "target": "WorkOrder",
+          "cardinality": "one-to-one",
+          "foreignKey": "WorkOrder.citaId",
+          "optional": true,
+          "onDelete": "SET NULL",
+          "onUpdate": "CASCADE"
         }
       ],
       "indexes": [["customerId"], ["vehicleId"], ["serviceId"], ["status", "requestedAt"]]
+    },
+    {
+      "name": "WorkOrder",
+      "table": "WorkOrder",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "databaseType": "UUID",
+          "primaryKey": true,
+          "default": "uuid()"
+        },
+        { "name": "numeroOrden", "type": "String", "databaseType": "VARCHAR(30)", "unique": true },
+        {
+          "name": "clienteId",
+          "type": "String",
+          "databaseType": "UUID",
+          "foreignKey": "Customer.id"
+        },
+        {
+          "name": "vehiculoId",
+          "type": "String",
+          "databaseType": "UUID",
+          "foreignKey": "Vehicle.id"
+        },
+        {
+          "name": "citaId",
+          "type": "String",
+          "databaseType": "UUID",
+          "optional": true,
+          "unique": true,
+          "foreignKey": "Appointment.id"
+        },
+        { "name": "descripcionProblema", "type": "String", "databaseType": "VARCHAR(2000)" },
+        {
+          "name": "observaciones",
+          "type": "String",
+          "databaseType": "VARCHAR(2000)",
+          "optional": true
+        },
+        {
+          "name": "mecanicoResponsable",
+          "type": "String",
+          "databaseType": "VARCHAR(150)",
+          "optional": true
+        },
+        {
+          "name": "estado",
+          "type": "WorkOrderStatus",
+          "databaseType": "WorkOrderStatus",
+          "default": "ABIERTA"
+        },
+        {
+          "name": "fechaIngreso",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        },
+        {
+          "name": "fechaCreacion",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        },
+        {
+          "name": "fechaActualizacion",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()",
+          "updatedAt": true
+        }
+      ],
+      "relations": [
+        {
+          "field": "cliente",
+          "target": "Customer",
+          "cardinality": "many-to-one",
+          "foreignKey": "clienteId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        },
+        {
+          "field": "vehiculo",
+          "target": "Vehicle",
+          "cardinality": "many-to-one",
+          "foreignKey": "vehiculoId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        },
+        {
+          "field": "cita",
+          "target": "Appointment",
+          "cardinality": "one-to-one",
+          "foreignKey": "citaId",
+          "optional": true,
+          "onDelete": "SET NULL",
+          "onUpdate": "CASCADE"
+        }
+      ],
+      "indexes": [["clienteId", "fechaIngreso"], ["vehiculoId"], ["estado", "fechaIngreso"]]
     }
   ]
 }

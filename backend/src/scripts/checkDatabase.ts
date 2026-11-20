@@ -16,10 +16,17 @@ async function checkDatabase() {
       FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_type = 'BASE TABLE'
-        AND table_name IN ('Appointment', 'Customer', 'Service', 'Vehicle', 'StaffProfile')
+        AND table_name IN ('Appointment', 'Customer', 'Service', 'Vehicle', 'StaffProfile', 'WorkOrder')
     `
     const presentTables = new Set(tables.map(({ table_name }) => table_name))
-    const requiredTables = ['Appointment', 'Customer', 'Service', 'Vehicle', 'StaffProfile']
+    const requiredTables = [
+      'Appointment',
+      'Customer',
+      'Service',
+      'Vehicle',
+      'StaffProfile',
+      'WorkOrder',
+    ]
     const missingTables = requiredTables.filter((table) => !presentTables.has(table))
 
     if (missingTables.length > 0) {
@@ -40,14 +47,19 @@ async function checkDatabase() {
       FROM public."_prisma_migrations"
       WHERE migration_name IN (
         '20261116000000_modelo_taller',
-        '20261119000000_roles_empleados'
+        '20261119000000_roles_empleados',
+        '20261119200000_ordenes_trabajo'
       )
         AND finished_at IS NOT NULL
         AND rolled_back_at IS NULL
     `
 
     const appliedMigrations = new Set(migrations.map(({ migration_name }) => migration_name))
-    const requiredMigrations = ['20261116000000_modelo_taller', '20261119000000_roles_empleados']
+    const requiredMigrations = [
+      '20261116000000_modelo_taller',
+      '20261119000000_roles_empleados',
+      '20261119200000_ordenes_trabajo',
+    ]
     const missingMigrations = requiredMigrations.filter(
       (migration) => !appliedMigrations.has(migration),
     )
@@ -58,7 +70,7 @@ async function checkDatabase() {
       )
     }
 
-    console.info('Supabase connection, schema, and initial migration verified.')
+    console.info('Supabase connection, schema, and required migrations verified.')
   } catch {
     console.error('Database connection failed. Check DATABASE_URL and database availability.')
     process.exitCode = 1

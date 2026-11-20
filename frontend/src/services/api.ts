@@ -99,6 +99,26 @@ export type AdminAppointment = {
   service: { name: string }
 }
 
+export type WorkOrderStatus =
+  'ABIERTA' | 'EN_DIAGNOSTICO' | 'EN_PROCESO' | 'FINALIZADA' | 'CANCELADA'
+
+export type AdminWorkOrder = {
+  id: string
+  numeroOrden: string
+  clienteId: string
+  vehiculoId: string
+  citaId: string | null
+  descripcionProblema: string
+  observaciones: string | null
+  mecanicoResponsable: string | null
+  estado: WorkOrderStatus
+  fechaIngreso: string
+  fechaCreacion: string
+  fechaActualizacion: string
+  cliente: { name: string; phone: string }
+  vehiculo: { make: string; model: string; year: number; plate: string | null }
+}
+
 async function authenticatedRequest<T>(path: string, accessToken: string, init?: RequestInit) {
   return request<T>(path, {
     ...init,
@@ -112,6 +132,10 @@ export function getEmployeeIdentity(accessToken: string) {
 
 export function getAdminAppointments(accessToken: string) {
   return authenticatedRequest<AdminAppointment[]>('/admin/citas', accessToken)
+}
+
+export function getAdminWorkOrders(accessToken: string) {
+  return authenticatedRequest<AdminWorkOrder[]>('/admin/ordenes', accessToken)
 }
 
 export function setAppointmentStatus(

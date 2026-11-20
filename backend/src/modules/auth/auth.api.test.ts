@@ -56,6 +56,24 @@ describe('autenticación de empleados', () => {
     expect(response.body.error.code).toBe('EMPLOYEE_ROLE_NOT_ASSIGNED')
   })
 
+  it('rechaza perfiles MECANICO heredados y no crea una sesión del sistema', async () => {
+    const app = createApp({
+      authenticateEmployee: createAuthenticateEmployee({
+        verifyAccessToken: vi
+          .fn()
+          .mockResolvedValue({ id: employeeId, email: 'mecanico@example.com' }),
+        findProfile: vi.fn().mockResolvedValue({ role: 'MECANICO', displayName: 'Técnico' }),
+      }),
+    })
+
+    const response = await request(app)
+      .get('/api/auth/me')
+      .set('Authorization', 'Bearer valid-token')
+
+    expect(response.status).toBe(403)
+    expect(response.body.error.code).toBe('EMPLOYEE_ROLE_NOT_AUTHORIZED')
+  })
+
   it('lee el rol de una fuente de datos confiable y no del cuerpo enviado', async () => {
     const app = createApp({
       authenticateEmployee: createAuthenticateEmployee({
