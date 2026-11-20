@@ -198,13 +198,15 @@ El endpoint público de creación tiene un límite de 10 solicitudes cada 15 min
 
 La página `/login` inicia sesión con correo y contraseña de Supabase Auth; el sistema no ofrece registro de empleados. Supabase guarda la sesión en `sessionStorage` (se elimina al cerrar la pestaña). Cada ruta privada envía el access token al API. Express valida identidad en Supabase y busca el rol en `StaffProfile`; nunca acepta roles desde el navegador ni desde metadatos editables.
 
-| Rol             | Permisos actuales                               |
-| --------------- | ----------------------------------------------- |
-| `ADMINISTRADOR` | Acceso al panel y gestión de citas pendientes   |
-| `RECEPCIONISTA` | Consulta, confirmación y cancelación de citas   |
-| `MECANICO`      | Sin acceso al panel de recepción en este avance |
+| Rol             | Permisos actuales                                         |
+| --------------- | --------------------------------------------------------- |
+| `ADMINISTRADOR` | Acceso al panel y gestión de citas pendientes             |
+| `RECEPCIONISTA` | Consulta, confirmación y cancelación de citas             |
+| `MECANICO`      | Sin cuenta ni acceso al sistema; valor heredado bloqueado |
 
 Solo `ADMINISTRADOR` y `RECEPCIONISTA` acceden a `GET /api/admin/citas` y `PATCH /api/admin/citas/:id/estado`. El cambio de estado se ejecuta en PostgreSQL de forma condicional: solo una cita `PENDIENTE` puede pasar a `CONFIRMADA` o `CANCELADA`; los estados terminales no se reabren desde este endpoint. El backend devuelve `401` si falta o no es válido el token y `403` si falta el perfil o el rol no autoriza la acción.
+
+El listado inicial de órdenes se sirve en `GET /api/admin/ordenes`, disponible solo para `ADMINISTRADOR` y `RECEPCIONISTA`. La página `/admin/ordenes` presenta los registros existentes o un estado vacío. En este avance todavía no se crean ni editan órdenes. El modelo, la migración pendiente y las reglas para mecánicos se describen en [docs/arquitectura.md](docs/arquitectura.md).
 
 ### Alta administrativa de empleados
 
@@ -217,7 +219,7 @@ INSERT INTO public."StaffProfile" ("userId", role, "displayName")
 VALUES ('UUID_DEL_USUARIO_AUTH', 'RECEPCIONISTA', 'Nombre del empleado');
 ```
 
-Valores válidos: `ADMINISTRADOR`, `RECEPCIONISTA`, `MECANICO`. La tabla tiene RLS activado y acceso directo revocado para los roles `anon` y `authenticated`; el API consulta mediante su conexión de servidor.
+Valores autorizados: `ADMINISTRADOR` y `RECEPCIONISTA`. `MECANICO` permanece como valor heredado de la base, pero el servidor lo rechaza. No crees cuentas de Supabase ni perfiles `StaffProfile` para mecánicos; su nombre se guarda solo como responsable descriptivo de una orden. La tabla tiene RLS activado y acceso directo revocado para los roles `anon` y `authenticated`; el API consulta mediante su conexión de servidor. El procedimiento seguro para revisar y retirar perfiles MECANICO se documenta en [la arquitectura](docs/arquitectura.md); no se alteran perfiles ni cuentas automáticamente.
 
 ## Verificaciones
 
@@ -237,8 +239,9 @@ Las pruebas HTTP usan repositorios y servicios inyectados para verificar validac
 - El catálogo y el formulario usan la API y guardan solicitudes cuando hay una base accesible y migrada.
 - La disponibilidad de una hora no se confirma automáticamente; el taller debe confirmar la solicitud.
 - La disponibilidad de horarios sigue dependiendo de la confirmación del taller.
-- El panel actual se limita a consultar, confirmar y cancelar solicitudes; usuarios y otros módulos quedan pendientes.
-- No se incluyen facturación, inventario, órdenes de trabajo, notificaciones, reportes ni pagos.
+- El panel permite consultar, confirmar y cancelar citas, y consultar la estructura inicial de órdenes de trabajo. Crear y modificar órdenes queda pendiente.
+- La migración de órdenes está versionada, pero debe aplicarse de forma controlada antes de usar el listado con la base desplegada.
+- No se incluyen facturación, inventario, notificaciones, reportes ni pagos.
 
 ## Código de verificación académica
 

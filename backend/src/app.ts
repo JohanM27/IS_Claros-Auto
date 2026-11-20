@@ -11,6 +11,7 @@ import { createAuthRouter } from './modules/auth/auth.routes.js'
 import { authenticateEmployee } from './modules/auth/auth.middleware.js'
 import type { RequestHandler } from 'express'
 import { createAdminRouter } from './modules/admin/admin.routes.js'
+import { crearRutasOrdenesTrabajo } from './modules/ordenesTrabajo/ordenTrabajo.routes.js'
 
 export type ApiDependencies = {
   listarServicios?: Parameters<typeof crearRutasServicios>[0]
@@ -18,6 +19,7 @@ export type ApiDependencies = {
   consultarCita?: Parameters<typeof crearRutasCitas>[1]
   authenticateEmployee?: RequestHandler
   admin?: Parameters<typeof createAdminRouter>[1]
+  ordenesTrabajo?: Parameters<typeof crearRutasOrdenesTrabajo>[1]
 }
 
 export function createApp(dependencies: ApiDependencies = {}) {
@@ -51,6 +53,13 @@ export function createApp(dependencies: ApiDependencies = {}) {
     createAdminRouter(
       dependencies.authenticateEmployee ?? authenticateEmployee,
       dependencies.admin,
+    ),
+  )
+  app.use(
+    '/api/admin/ordenes',
+    crearRutasOrdenesTrabajo(
+      dependencies.authenticateEmployee ?? authenticateEmployee,
+      dependencies.ordenesTrabajo,
     ),
   )
   app.use('/api/servicios', crearRutasServicios(dependencies.listarServicios))

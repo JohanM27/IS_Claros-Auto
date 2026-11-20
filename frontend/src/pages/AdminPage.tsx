@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Link, Navigate } from 'react-router-dom'
+import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { AdminNavigation } from '../components/AdminNavigation'
 import {
   ApiError,
   getAdminAppointments,
@@ -78,26 +79,11 @@ export function AdminPage() {
         indexable={false}
       />
       <div className="mx-auto max-w-6xl">
-        <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="text-sm font-bold uppercase tracking-widest text-blue-700">Claros Auto</p>
-            <h1 className="mt-1 text-3xl font-black">Panel de citas</h1>
-            <p className="mt-1 text-slate-600">
-              {employee?.displayName ?? employee?.email} · {employee?.role}
-            </p>
-          </div>
-          <div className="flex gap-3">
-            <Link className="rounded-md border border-slate-300 px-4 py-2 font-semibold" to="/">
-              Ver sitio
-            </Link>
-            <button
-              className="rounded-md bg-slate-900 px-4 py-2 font-semibold text-white"
-              onClick={() => void signOut()}
-            >
-              Cerrar sesión
-            </button>
-          </div>
-        </header>
+        <AdminNavigation
+          title="Panel de citas"
+          employee={employee}
+          onSignOut={() => void signOut()}
+        />
         {error && (
           <p
             role="alert"

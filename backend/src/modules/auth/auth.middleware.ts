@@ -87,6 +87,17 @@ export function createAuthenticateEmployee(
         return
       }
 
+      if (profile.role !== 'ADMINISTRADOR' && profile.role !== 'RECEPCIONISTA') {
+        next(
+          new HttpError(
+            403,
+            'EMPLOYEE_ROLE_NOT_AUTHORIZED',
+            'El acceso al sistema está reservado para administración y recepción.',
+          ),
+        )
+        return
+      }
+
       request.employeeIdentity = {
         userId: user.id,
         email: user.email,

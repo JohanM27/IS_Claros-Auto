@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
 import type { Session, User } from '@supabase/supabase-js'
+import { ApiError, getEmployeeIdentity } from '../services/api'
 import { supabase } from './supabaseClient'
 
 type AuthContextValue = {
@@ -51,13 +52,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('El inicio de sesión todavía no está configurado.')
     }
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await supabase.auth.signInWithPassword({
       email: email.trim(),
       password,
     })
 
     if (error) {
       throw new Error('No se pudo iniciar sesión. Verifica el correo y la contraseña.')
+    }
+
+    const accessToken = data.session?.access_token
+    if (!accessToken) {
+      await supabase.auth.signOut()
+      throw new Error('No se pudo verificar la cuenta del empleado.')
+    }
+
+    try {
+      const employee = await getEmployeeIdentity(accessToken)
+      if (employee.role !== 'ADMINISTRADOR' && employee.role !== 'RECEPCIONISTA') {
+        throw new ApiError('Rol sin acceso al sistema.', 403)
+      }
+    } catch (cause) {
+      await supabase.auth.signOut()
+      if (cause instanceof ApiError && cause.status === 403) {
+        throw new Error('El acceso está reservado para administración y recepción.')
+      }
+      throw cause instanceof Error
+        ? cause
+        : new Error('No se pudo verificar la cuenta del empleado.')
     }
   }
 
