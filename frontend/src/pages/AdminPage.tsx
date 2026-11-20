@@ -9,6 +9,7 @@ import {
   type AdminAppointment,
   type EmployeeIdentity,
 } from '../services/api'
+import { PageMetadata } from '../components/PageMetadata'
 
 export function AdminPage() {
   const { session, loading: authLoading, signOut } = useAuth()
@@ -71,6 +72,11 @@ export function AdminPage() {
 
   return (
     <main className="min-h-screen bg-slate-50 px-5 py-10 text-slate-950 sm:px-8">
+      <PageMetadata
+        title="Panel administrativo"
+        description="Panel privado para la gestión de citas de Claros Auto."
+        indexable={false}
+      />
       <div className="mx-auto max-w-6xl">
         <header className="mb-8 flex flex-wrap items-center justify-between gap-4">
           <div>

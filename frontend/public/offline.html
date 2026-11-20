@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f3f5f7" />
+    <title>Sin conexión | Claros Auto</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: system-ui, sans-serif;
+        color: #111827;
+        background: #f3f5f7;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 1.5rem;
+      }
+      main {
+        width: min(100%, 38rem);
+        padding: 2rem;
+        border: 1px solid #dbe2ea;
+        border-radius: 1rem;
+        background: white;
+        box-shadow: 0 12px 36px #11182712;
+      }
+      h1 {
+        margin: 0 0 0.75rem;
+        font-size: clamp(1.8rem, 7vw, 2.5rem);
+      }
+      p,
+      li {
+        line-height: 1.6;
+        color: #334155;
+      }
+      a {
+        color: #1749dc;
+        font-weight: 700;
+      }
+      .brand {
+        margin: 0 0 1.5rem;
+        color: #0b1024;
+        font-weight: 900;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p class="brand">Claros Auto</p>
+      <h1>Estás sin conexión</h1>
+      <p>
+        Algunas páginas públicas visitadas pueden seguir disponibles. El catálogo público se
+        conserva en este dispositivo cuando se ha cargado antes.
+      </p>
+      <p>
+        Por seguridad, las citas, el inicio de sesión y el panel administrativo requieren conexión y
+        no se guardan en caché.
+      </p>
+      <h2>Servicios disponibles</h2>
+      <ul id="services">
+        <li>Buscando el catálogo guardado…</li>
+      </ul>
+      <p><a href="/">Volver al inicio</a></p>
+    </main>
+    <script>
+      fetch('/api/servicios')
+        .then((response) => (response.ok ? response.json() : Promise.reject()))
+        .then(({ data }) => {
+          const list = document.getElementById('services')
+          list.replaceChildren(
+            ...data.map(({ name, description }) => {
+              const item = document.createElement('li')
+              item.textContent = `${name}: ${description}`
+              return item
+            }),
+          )
+        })
+        .catch(() => {
+          document.getElementById('services').innerHTML =
+            '<li>El catálogo todavía no se ha guardado en este dispositivo.</li>'
+        })
+    </script>
+  </body>
+</html>

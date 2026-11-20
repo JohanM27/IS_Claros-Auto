@@ -2,6 +2,43 @@
 
 La aplicación separa la interfaz React del backend Express y la persistencia PostgreSQL. El navegador solo comunica con `/api`; las credenciales de PostgreSQL y el cliente Prisma permanecen en el backend.
 
+## Diagrama C4
+
+### Contexto del sistema
+
+```mermaid
+C4Context
+  title Contexto de Claros Auto
+  Person(cliente, "Cliente", "Consulta servicios y solicita citas")
+  Person(empleado, "Empleado del taller", "Accede al panel según su rol")
+  System(claros, "Claros Auto", "Sitio público y API de administración de citas")
+  System_Ext(supabase, "Supabase", "Auth y PostgreSQL administrado")
+  Rel(cliente, claros, "Consulta servicios y solicita una cita", "HTTPS")
+  Rel(empleado, claros, "Inicia sesión y gestiona citas", "HTTPS")
+  Rel(claros, supabase, "Verifica sesiones y persiste información", "HTTPS / PostgreSQL TLS")
+```
+
+### Contenedores principales
+
+```mermaid
+C4Container
+  title Contenedores de Claros Auto
+  Person(cliente, "Cliente", "Navegador")
+  Person(empleado, "Empleado", "Navegador autenticado")
+  System_Boundary(claros, "Claros Auto") {
+    Container(web, "Frontend", "React, TypeScript, Vite", "Sitio público, autenticación y panel")
+    Container(api, "API", "Node.js, Express, Prisma", "Validación, autorización y lógica de citas")
+  }
+  System_Ext(auth, "Supabase Auth", "Identidad y sesiones de empleados")
+  System_Ext(db, "Supabase PostgreSQL", "Datos del taller y perfiles de empleados")
+  Rel(cliente, web, "Usa", "HTTPS")
+  Rel(empleado, web, "Usa", "HTTPS")
+  Rel(web, api, "Solicitudes REST y bearer token", "HTTPS / JSON")
+  Rel(web, auth, "Login y gestión de sesión", "HTTPS")
+  Rel(api, auth, "Verifica tokens", "HTTPS")
+  Rel(api, db, "Consulta y persiste", "PostgreSQL TLS")
+```
+
 ## Organización técnica
 
 - `frontend/src/components`: formulario de cita, tarjetas de servicio y componentes compartidos.

@@ -124,6 +124,27 @@ npm --prefix frontend run dev
 
 La web suele estar en `http://localhost:5173` y la API en `http://localhost:3000`. Comprueba el estado en `http://localhost:3000/api/health`.
 
+## Aplicación web progresiva
+
+La compilación de producción incluye un Web App Manifest, iconos del taller y un service worker que conserva el shell público para abrirlo sin conexión. El único endpoint de API que se puede guardar es el catálogo público `GET /api/servicios`; el catálogo disponible offline debe haberse cargado anteriormente en ese dispositivo. Login, citas y rutas/endpoints de administración requieren red y no se almacenan en caché ni se sincronizan después.
+
+Para probar la instalación en desarrollo local, construye y sirve la versión de producción:
+
+```bash
+npm run build
+npm --prefix frontend run preview -- --host 127.0.0.1
+```
+
+Abre la URL local que imprime Vite Preview. `localhost` sirve como contexto seguro para la prueba; en producción se requiere HTTPS. El menú del navegador permite instalar la app cuando el navegador admite instalación de PWAs. La experiencia offline sirve contenido público estático y el catálogo previamente consultado, no permite solicitar ni gestionar citas.
+
+## SEO y páginas de error
+
+La portada y el catálogo establecen título, descripción y metadatos Open Graph en el cliente. Login, formulario de citas, panel administrativo y 404 se marcan como `noindex, nofollow`; `frontend/public/robots.txt` restringe el rastreo de esas rutas y de `/api/`. No se publica sitemap todavía porque falta definir el dominio público y las URL canónicas. Como la web es una SPA sin renderizado del servidor, los metadatos de rutas secundarias se aplican después de cargar JavaScript; una publicación que requiera vistas previas sociales deterministas puede necesitar prerenderizado o SSR.
+
+## Despliegue y análisis de calidad
+
+La aplicación está preparada para compilar frontend y backend por separado; todavía no está publicada y no se ha definido dominio ni proveedor. Consulta [la guía de despliegue](docs/despliegue.md) para variables por componente, migraciones Supabase, HTTPS, configuración CORS, SonarQube Cloud y la lista de comprobación. La arquitectura C4 y las decisiones ADR están en `docs/arquitectura.md` y `docs/adr/`.
+
 ## API
 
 ### `GET /api/health`

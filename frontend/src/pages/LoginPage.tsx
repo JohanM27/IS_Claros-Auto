@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
+import { PageMetadata } from '../components/PageMetadata'
 
 export function LoginPage() {
   const { signIn, isConfigured } = useAuth()
@@ -11,7 +12,7 @@ export function LoginPage() {
   const [error, setError] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
   const returnTo =
-    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/'
+    (location.state as { from?: { pathname?: string } } | null)?.from?.pathname ?? '/admin'
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -34,6 +35,11 @@ export function LoginPage() {
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-950 px-5 py-12">
+      <PageMetadata
+        title="Acceso de empleados"
+        description="Inicio de sesión privado para el personal de Claros Auto."
+        indexable={false}
+      />
       <section className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-7 shadow-xl sm:p-9">
         <Link to="/" className="text-lg font-black tracking-tight text-slate-950">
           Claros <span className="text-blue-700">Auto</span>

@@ -15,62 +15,65 @@ export async function crearRegistroCita(input: CrearCitaInput, lookupTokenHash: 
 
   if (!service) return null
 
-  return prisma.$transaction(async (transaction) => {
-    const customer = existingCustomer
-      ? input.email && input.email !== existingCustomer.email
-        ? await transaction.customer.update({
-            where: { id: existingCustomer.id },
-            data: { email: input.email },
+  return prisma.$transaction(
+    async (transaction) => {
+      const customer = existingCustomer
+        ? input.email && input.email !== existingCustomer.email
+          ? await transaction.customer.update({
+              where: { id: existingCustomer.id },
+              data: { email: input.email },
+              select: { id: true },
+            })
+          : existingCustomer
+        : await transaction.customer.create({
+            data: {
+              name: input.name,
+              phone: input.phone,
+              email: input.email || null,
+            },
             select: { id: true },
           })
-        : existingCustomer
-      : await transaction.customer.create({
-          data: {
-            name: input.name,
-            phone: input.phone,
-            email: input.email || null,
-          },
-          select: { id: true },
-        })
-    const existingVehicle = await transaction.vehicle.findFirst({
-      where: {
-        customerId: customer.id,
-        make: input.vehicleMake,
-        model: input.vehicleModel,
-        year: input.vehicleYear,
-        plate: null,
-      },
-      select: { id: true },
-    })
-    const vehicle =
-      existingVehicle ??
-      (await transaction.vehicle.create({
-        data: {
+      const existingVehicle = await transaction.vehicle.findFirst({
+        where: {
           customerId: customer.id,
           make: input.vehicleMake,
           model: input.vehicleModel,
           year: input.vehicleYear,
+          plate: null,
         },
         select: { id: true },
-      }))
-    const appointment = await transaction.appointment.create({
-      data: {
-        customerId: customer.id,
-        vehicleId: vehicle.id,
-        serviceId: service.id,
-        requestedAt: input.requestedAt,
-        notes: input.notes || null,
-        status: 'PENDIENTE',
-        lookupTokenHash,
-      },
-      select: { id: true, status: true, requestedAt: true, createdAt: true },
-    })
+      })
+      const vehicle =
+        existingVehicle ??
+        (await transaction.vehicle.create({
+          data: {
+            customerId: customer.id,
+            make: input.vehicleMake,
+            model: input.vehicleModel,
+            year: input.vehicleYear,
+          },
+          select: { id: true },
+        }))
+      const appointment = await transaction.appointment.create({
+        data: {
+          customerId: customer.id,
+          vehicleId: vehicle.id,
+          serviceId: service.id,
+          requestedAt: input.requestedAt,
+          notes: input.notes || null,
+          status: 'PENDIENTE',
+          lookupTokenHash,
+        },
+        select: { id: true, status: true, requestedAt: true, createdAt: true },
+      })
 
-    return { ...appointment, service }
-  }, {
-    maxWait: 15_000,
-    timeout: 30_000,
-  })
+      return { ...appointment, service }
+    },
+    {
+      maxWait: 15_000,
+      timeout: 30_000,
+    },
+  )
 }
 
 export async function buscarCitaPorId(id: string) {

@@ -3,6 +3,7 @@ import { ServiceCard } from '../components/ServiceCard'
 import { PageHeading } from '../components/PageHeading'
 import { getServices } from '../services/api'
 import type { Service } from '../types/service'
+import { PageMetadata } from '../components/PageMetadata'
 
 export function ServicesPage() {
   const [services, setServices] = useState<Service[]>([])
@@ -28,6 +29,10 @@ export function ServicesPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-5 py-16 sm:px-8 sm:py-20">
+      <PageMetadata
+        title="Servicios"
+        description="Consulta los servicios de Claros Auto para tu vehículo y envía una solicitud de atención al taller."
+      />
       <PageHeading
         eyebrow="Claros Auto"
         title="Servicios para tu vehículo"
