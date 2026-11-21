@@ -292,6 +292,14 @@
           "databaseType": "VARCHAR(150)",
           "optional": true
         },
+        { "name": "kilometraje", "type": "Int", "databaseType": "INTEGER", "optional": true },
+        {
+          "name": "idempotencyKey",
+          "type": "String",
+          "databaseType": "UUID",
+          "unique": true
+        },
+        { "name": "requestHash", "type": "String", "databaseType": "CHAR(64)" },
         {
           "name": "estado",
           "type": "WorkOrderStatus",

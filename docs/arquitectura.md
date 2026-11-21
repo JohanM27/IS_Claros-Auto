@@ -43,7 +43,7 @@ C4Container
 
 - `frontend/src/components`: formulario de cita, tarjetas de servicio y componentes compartidos.
 - `frontend/src/pages`: vistas de inicio, catálogo y citas.
-- `frontend/src/pages/WorkOrdersPage.tsx`: listado inicial y estado vacío de órdenes de trabajo.
+- `frontend/src/pages/WorkOrdersPage.tsx`: listado, búsqueda de cliente y formulario de registro de órdenes de trabajo.
 - `frontend/src/services/api.ts`: cliente HTTP que transforma la entrada del formulario al contrato REST.
 - `backend/src/config/database.ts`: `pg.Pool`, adaptador Prisma y cliente singleton.
 - `backend/src/config/api.ts`: orígenes CORS permitidos.
@@ -113,6 +113,9 @@ erDiagram
     varchar descripcionProblema
     varchar observaciones "opcional"
     varchar mecanicoResponsable "opcional, texto sin Auth"
+    int kilometraje "opcional"
+    uuid idempotencyKey UK
+    char requestHash
     WorkOrderStatus estado
     timestamptz fechaIngreso
     timestamptz fechaCreacion
@@ -122,7 +125,7 @@ erDiagram
 
 `AppointmentStatus` tiene los valores `PENDIENTE`, `CONFIRMADA`, `CANCELADA` y `COMPLETADA`; las citas nuevas siempre comienzan como `PENDIENTE`. Las claves foráneas restringen la eliminación de registros referenciados. Hay índices para teléfonos, relaciones, estado y fecha. El token de consulta sin procesar nunca se guarda; solo su hash SHA-256.
 
-`WorkOrderStatus` contiene `ABIERTA`, `EN_DIAGNOSTICO`, `EN_PROCESO`, `FINALIZADA` y `CANCELADA`. Una orden puede crearse sin cita; si se vincula una cita, la relación es única y opcional. `mecanicoResponsable` es texto descriptivo, sin clave foránea a `auth.users` ni a `StaffProfile`. La migración se versiona en el repositorio y debe aplicarse manualmente durante el siguiente despliegue controlado; no se ha ejecutado contra Supabase en este avance.
+`WorkOrderStatus` contiene `ABIERTA`, `EN_DIAGNOSTICO`, `EN_PROCESO`, `FINALIZADA` y `CANCELADA`. Una orden puede crearse sin cita; si se vincula una cita, la relación es única y opcional. `mecanicoResponsable` es texto descriptivo, sin clave foránea a `auth.users` ni a `StaffProfile`. El módulo ofrece endpoints protegidos para búsqueda de clientes, citas compatibles, listado y registro. La secuencia de PostgreSQL asigna el número y una clave de idempotencia evita crear una segunda orden tras reintentos. La migración se versiona en el repositorio y debe aplicarse durante un despliegue controlado; no se ejecuta automáticamente contra Supabase desde el avance.
 
 El archivo [modelo-datos.json](modelo-datos.json) representa los mismos modelos, campos, tipos, valores enum y relaciones que `schema.prisma`.
 
