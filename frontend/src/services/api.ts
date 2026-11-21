@@ -111,12 +111,38 @@ export type AdminWorkOrder = {
   descripcionProblema: string
   observaciones: string | null
   mecanicoResponsable: string | null
+  kilometraje: number | null
   estado: WorkOrderStatus
   fechaIngreso: string
   fechaCreacion: string
   fechaActualizacion: string
   cliente: { name: string; phone: string }
   vehiculo: { make: string; model: string; year: number; plate: string | null }
+}
+
+export type WorkOrderCustomer = {
+  id: string
+  name: string
+  phone: string
+  email: string | null
+  vehicles: { id: string; make: string; model: string; year: number; plate: string | null }[]
+}
+export type WorkOrderAppointment = {
+  id: string
+  requestedAt: string
+  status: 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA' | 'COMPLETADA'
+  service: { name: string }
+}
+export type CreateWorkOrderInput = {
+  clienteId: string
+  vehiculoId: string
+  citaId: string | null
+  descripcionProblema: string
+  observaciones: string | null
+  mecanicoResponsable: string | null
+  kilometraje: number | null
+  fechaIngreso: string
+  idempotencyKey: string
 }
 
 async function authenticatedRequest<T>(path: string, accessToken: string, init?: RequestInit) {
@@ -136,6 +162,29 @@ export function getAdminAppointments(accessToken: string) {
 
 export function getAdminWorkOrders(accessToken: string) {
   return authenticatedRequest<AdminWorkOrder[]>('/admin/ordenes', accessToken)
+}
+
+export function searchWorkOrderCustomers(accessToken: string, query: string) {
+  return authenticatedRequest<WorkOrderCustomer[]>(
+    `/admin/ordenes/clientes?q=${encodeURIComponent(query)}`,
+    accessToken,
+  )
+}
+
+export function getWorkOrderAppointments(
+  accessToken: string,
+  clienteId: string,
+  vehiculoId: string,
+) {
+  const query = new URLSearchParams({ clienteId, vehiculoId })
+  return authenticatedRequest<WorkOrderAppointment[]>(`/admin/ordenes/citas?${query}`, accessToken)
+}
+
+export function createWorkOrder(accessToken: string, input: CreateWorkOrderInput) {
+  return authenticatedRequest<AdminWorkOrder>('/admin/ordenes', accessToken, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
 }
 
 export function setAppointmentStatus(

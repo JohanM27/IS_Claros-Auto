@@ -14,6 +14,7 @@ export function App() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/ordenes" element={<WorkOrdersPage />} />
+      <Route path="/admin/ordenes/nueva" element={<WorkOrdersPage />} />
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/servicios" element={<ServicesPage />} />

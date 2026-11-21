@@ -107,6 +107,9 @@ model WorkOrder {
   descripcionProblema String          @db.VarChar(2000)
   observaciones       String?         @db.VarChar(2000)
   mecanicoResponsable String?         @db.VarChar(150)
+  kilometraje         Int?
+  idempotencyKey      String          @unique @db.Uuid
+  requestHash         String          @db.Char(64)
   estado              WorkOrderStatus @default(ABIERTA)
   fechaIngreso        DateTime        @default(now()) @db.Timestamptz(3)
   fechaCreacion       DateTime        @default(now()) @db.Timestamptz(3)
