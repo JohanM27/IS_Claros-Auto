@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { AdminNavigation } from '../components/AdminNavigation'
@@ -11,6 +11,7 @@ import {
   type EmployeeIdentity,
 } from '../services/api'
 import { PageMetadata } from '../components/PageMetadata'
+import { supabase } from '../auth/supabaseClient'
 
 export function AdminPage() {
   const { session, loading: authLoading, signOut } = useAuth()
@@ -19,21 +20,62 @@ export function AdminPage() {
   const [loading, setLoading] = useState(true)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'offline'>(() =>
+    supabase ? 'connecting' : 'offline',
+  )
+
+  const refreshAppointments = useCallback(async () => {
+    if (!session) return
+    setRefreshing(true)
+    try {
+      setAppointments(await getAdminAppointments(session.access_token))
+      setError('')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudieron actualizar las citas.')
+    } finally {
+      setRefreshing(false)
+    }
+  }, [session])
 
   useEffect(() => {
     if (!session) return
     let active = true
-    void getEmployeeIdentity(session.access_token)
-      .then(async (identity) => {
+    let refreshTimer: ReturnType<typeof setTimeout> | undefined
+    let channel: ReturnType<NonNullable<typeof supabase>['channel']> | null = null
+    void Promise.all([
+      getEmployeeIdentity(session.access_token),
+      getAdminAppointments(session.access_token),
+    ])
+      .then(([identity, appointments]) => {
         if (!active) return
         setError('')
         setEmployee(identity)
         if (identity.role === 'MECANICO')
           throw new ApiError('Tu cuenta no tiene permiso para el panel de recepción.', 403)
-        setAppointments(await getAdminAppointments(session.access_token))
+        setAppointments(appointments)
+        if (!supabase) return
+
+        channel = supabase
+          .channel('admin-appointments', { config: { private: true } })
+          .on('broadcast', { event: 'appointment_changed' }, () => {
+            if (refreshTimer) clearTimeout(refreshTimer)
+            refreshTimer = setTimeout(() => void refreshAppointments(), 200)
+          })
+          .subscribe((status) => {
+            if (!active) return
+            if (status === 'SUBSCRIBED') {
+              setRealtimeStatus('live')
+              // Close the small window between the first fetch and the channel joining.
+              void refreshAppointments()
+            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+              setRealtimeStatus('offline')
+            }
+          })
       })
       .catch((cause: unknown) => {
         if (!active) return
+        setRealtimeStatus('offline')
         setError(
           cause instanceof ApiError && cause.status === 403
             ? 'Esta cuenta no tiene un rol de empleado autorizado. Contacta al administrador.'
@@ -43,12 +85,16 @@ export function AdminPage() {
         )
       })
       .finally(() => {
-        if (active) setLoading(false)
+        if (active) {
+          setLoading(false)
+        }
       })
     return () => {
       active = false
+      if (refreshTimer) clearTimeout(refreshTimer)
+      if (channel && supabase) void supabase.removeChannel(channel)
     }
-  }, [session])
+  }, [session, refreshAppointments])
 
   if (authLoading) return <main className="p-10 text-center">Verificando sesión…</main>
   if (!session) return <Navigate to="/login" replace state={{ from: { pathname: '/admin' } }} />
@@ -84,6 +130,23 @@ export function AdminPage() {
           employee={employee}
           onSignOut={() => void signOut()}
         />
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <p className={realtimeStatus === 'live' ? 'text-green-800' : 'text-slate-600'}>
+            {realtimeStatus === 'live'
+              ? 'Citas actualizadas en tiempo real'
+              : realtimeStatus === 'connecting'
+                ? 'Conectando actualizaciones en tiempo real…'
+                : 'Actualización en tiempo real no disponible.'}
+          </p>
+          <button
+            type="button"
+            onClick={() => void refreshAppointments()}
+            disabled={refreshing}
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold disabled:opacity-60"
+          >
+            {refreshing ? 'Actualizando…' : 'Actualizar citas'}
+          </button>
+        </div>
         {error && (
           <p
             role="alert"

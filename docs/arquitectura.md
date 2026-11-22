@@ -31,12 +31,15 @@ C4Container
   }
   System_Ext(auth, "Supabase Auth", "Identidad y sesiones de empleados")
   System_Ext(db, "Supabase PostgreSQL", "Datos del taller y perfiles de empleados")
+  System_Ext(realtime, "Supabase Realtime", "Avisos privados de cambios en citas")
   Rel(cliente, web, "Usa", "HTTPS")
   Rel(empleado, web, "Usa", "HTTPS")
   Rel(web, api, "Solicitudes REST y bearer token", "HTTPS / JSON")
   Rel(web, auth, "Login y gestión de sesión", "HTTPS")
   Rel(api, auth, "Verifica tokens", "HTTPS")
   Rel(api, db, "Consulta y persiste", "PostgreSQL TLS")
+  Rel(web, realtime, "Recibe avisos privados y vuelve a cargar por API", "WebSocket")
+  Rel(db, realtime, "Emite solo el identificador de la cita", "Broadcast con RLS")
 ```
 
 ## Organización técnica
@@ -49,6 +52,7 @@ C4Container
 - `backend/src/config/api.ts`: orígenes CORS permitidos.
 - `backend/src/modules/servicios`: consulta de servicios activos.
 - `backend/src/modules/citas`: validación Zod, rutas, controladores, lógica de token y persistencia.
+- `frontend/src/pages/AdminPage.tsx`: carga las citas en paralelo con la verificación de perfil y actualiza la lista con avisos privados de Realtime.
 - `backend/src/modules/ordenesTrabajo`: consulta administrativa de órdenes protegida por rol.
 - `backend/src/middleware/errorHandler.ts`: formato común de errores sin detalles internos.
 - `backend/prisma/schema.prisma`: esquema relacional fuente.
@@ -56,6 +60,8 @@ C4Container
 - `backend/prisma/seed.ts`: catálogo inicial repetible de servicios.
 
 Express limita el cuerpo JSON a 16 KB. El registro de citas acepta hasta 10 solicitudes por ventana de 15 minutos. CORS permite solo los orígenes declarados en `CORS_ORIGIN` (por defecto, el servidor Vite local). Las rutas de API están organizadas para inyectar dependencias en pruebas HTTP.
+
+Los avisos Realtime del panel llevan únicamente el ID de la cita; los datos completos se vuelven a solicitar al endpoint protegido. Una política RLS verifica que la sesión tenga el rol de administrador o recepcionista. La actualización en vivo requiere aplicar la migración `20261120160000_realtime_citas`.
 
 ## Modelo relacional
 
