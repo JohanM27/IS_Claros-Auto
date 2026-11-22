@@ -29,6 +29,7 @@ vi.mock('../services/api', () => ({
   getAdminAppointments: mocks.list,
   setAppointmentStatus: mocks.update,
 }))
+vi.mock('../auth/supabaseClient', () => ({ supabase: null }))
 
 afterEach(cleanup)
 beforeEach(() => {
@@ -73,6 +74,23 @@ describe('panel administrativo', () => {
     expect(await screen.findByText('María López')).toBeTruthy()
     expect(mocks.identity).toHaveBeenCalledWith('token')
     expect(mocks.list).toHaveBeenCalledWith('token')
+  })
+
+  it('inicia en paralelo la validación de perfil y la carga de citas', () => {
+    mocks.identity.mockImplementation(() => new Promise(() => {}))
+    mocks.list.mockImplementation(() => new Promise(() => {}))
+    const view = renderAdmin()
+
+    expect(mocks.identity).toHaveBeenCalledWith('token')
+    expect(mocks.list).toHaveBeenCalledWith('token')
+    view.unmount()
+  })
+
+  it('permite actualizar la lista de citas manualmente', async () => {
+    const user = userEvent.setup()
+    renderAdmin()
+    await user.click(await screen.findByRole('button', { name: 'Actualizar citas' }))
+    expect(mocks.list).toHaveBeenCalledTimes(2)
   })
 
   it('envía la confirmación al API y actualiza el estado presentado', async () => {

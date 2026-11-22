@@ -49,7 +49,8 @@ async function checkDatabase() {
         '20261116000000_modelo_taller',
         '20261119000000_roles_empleados',
         '20261119200000_ordenes_trabajo',
-        '20261120100000_registro_ordenes_trabajo'
+        '20261120100000_registro_ordenes_trabajo',
+        '20261120160000_realtime_citas'
       )
         AND finished_at IS NOT NULL
         AND rolled_back_at IS NULL
@@ -61,6 +62,7 @@ async function checkDatabase() {
       '20261119000000_roles_empleados',
       '20261119200000_ordenes_trabajo',
       '20261120100000_registro_ordenes_trabajo',
+      '20261120160000_realtime_citas',
     ]
     const missingMigrations = requiredMigrations.filter(
       (migration) => !appliedMigrations.has(migration),
