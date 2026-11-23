@@ -1,17 +1,21 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Link, Navigate, useLocation } from 'react-router-dom'
+import { Link, Navigate, useLocation, useParams } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { AdminNavigation } from '../components/AdminNavigation'
 import { PageMetadata } from '../components/PageMetadata'
 import {
   ApiError,
+  getAdminWorkOrder,
   getAdminWorkOrders,
   getEmployeeIdentity,
   searchWorkOrderCustomers,
   getWorkOrderAppointments,
   createWorkOrder,
   type AdminWorkOrder,
+  type AdminWorkOrderDetails,
+  type AdminWorkOrderListItem,
   type EmployeeIdentity,
+  type WorkOrderStatus,
   type WorkOrderCustomer,
   type WorkOrderAppointment,
 } from '../services/api'
@@ -19,11 +23,16 @@ import {
 export function WorkOrdersPage() {
   const { session, loading: authLoading, signOut } = useAuth()
   const [employee, setEmployee] = useState<EmployeeIdentity | null>(null)
-  const [workOrders, setWorkOrders] = useState<AdminWorkOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const location = useLocation()
+  const { id: orderId } = useParams()
   const isCreatePage = location.pathname.endsWith('/nueva')
+  const title = isCreatePage
+    ? 'Nueva orden de trabajo'
+    : orderId
+      ? 'Detalle de orden de trabajo'
+      : 'Órdenes de trabajo'
 
   useEffect(() => {
     if (!session) return
@@ -35,7 +44,6 @@ export function WorkOrdersPage() {
           throw new ApiError('Esta cuenta no tiene acceso al sistema administrativo.', 403)
         }
         setEmployee(identity)
-        if (!isCreatePage) setWorkOrders(await getAdminWorkOrders(session.access_token))
       })
       .catch((cause: unknown) => {
         if (!active) return
@@ -53,7 +61,7 @@ export function WorkOrdersPage() {
     return () => {
       active = false
     }
-  }, [session, isCreatePage])
+  }, [session])
 
   if (authLoading) return <main className="p-10 text-center">Verificando sesión…</main>
   if (!session) {
@@ -68,108 +76,503 @@ export function WorkOrdersPage() {
         indexable={false}
       />
       <div className="mx-auto max-w-6xl">
-        <AdminNavigation
-          title="Órdenes de trabajo"
-          employee={employee}
-          onSignOut={() => void signOut()}
-        />
-        <p className="mb-6 max-w-2xl text-slate-600">
-          Consulta las órdenes registradas y los trabajos asignados a cada mecánico.
-        </p>
-        {isCreatePage && session ? (
-          loading ? (
-            <p role="status">Verificando permisos…</p>
-          ) : error ? (
-            <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
-              {error}
-            </p>
-          ) : employee ? (
+        <AdminNavigation title={title} employee={employee} onSignOut={() => void signOut()} />
+        {loading ? (
+          <p role="status">Verificando permisos…</p>
+        ) : error ? (
+          <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
+            {error}
+          </p>
+        ) : employee && session ? (
+          isCreatePage ? (
             <CreateWorkOrderForm accessToken={session.access_token} />
-          ) : null
-        ) : (
-          <>
-            <div className="mb-5 flex justify-end">
-              <Link
-                to="/admin/ordenes/nueva"
-                className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800"
-              >
-                Nueva orden de trabajo
-              </Link>
-            </div>
-            {error && (
-              <p
-                role="alert"
-                className="mb-5 rounded-md border border-red-300 bg-red-50 p-4 text-red-900"
-              >
-                {error}
-              </p>
-            )}
-            {loading ? (
-              <p role="status">Cargando órdenes de trabajo…</p>
-            ) : !error && workOrders.length === 0 ? (
-              <p className="rounded-xl border border-slate-200 bg-white p-8 text-slate-600">
-                Todavía no hay órdenes de trabajo registradas.
-              </p>
-            ) : (
-              <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm">
-                <table className="min-w-[900px] divide-y divide-slate-200 text-left text-sm">
-                  <caption className="sr-only">Órdenes de trabajo registradas</caption>
-                  <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
-                    <tr>
-                      <th className="px-4 py-3" scope="col">
-                        Orden
-                      </th>
-                      <th className="px-4 py-3" scope="col">
-                        Cliente
-                      </th>
-                      <th className="px-4 py-3" scope="col">
-                        Vehículo
-                      </th>
-                      <th className="px-4 py-3" scope="col">
-                        Problema
-                      </th>
-                      <th className="px-4 py-3" scope="col">
-                        Mecánico responsable
-                      </th>
-                      <th className="px-4 py-3" scope="col">
-                        Estado
-                      </th>
-                      <th className="px-4 py-3" scope="col">
-                        Ingreso
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {workOrders.map((order) => (
-                      <tr key={order.id}>
-                        <td className="whitespace-nowrap px-4 py-4 font-bold">
-                          {order.numeroOrden}
-                        </td>
-                        <td className="px-4 py-4">{order.cliente.name}</td>
-                        <td className="whitespace-nowrap px-4 py-4">
-                          {order.vehiculo.make} {order.vehiculo.model} ({order.vehiculo.year})
-                        </td>
-                        <td className="max-w-xs px-4 py-4">{order.descripcionProblema}</td>
-                        <td className="px-4 py-4">{order.mecanicoResponsable ?? 'Sin asignar'}</td>
-                        <td className="whitespace-nowrap px-4 py-4">
-                          {order.estado.replaceAll('_', ' ')}
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-4">
-                          {new Intl.DateTimeFormat('es-HN', { dateStyle: 'medium' }).format(
-                            new Date(order.fechaIngreso),
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </>
-        )}
+          ) : orderId ? (
+            <WorkOrderDetail accessToken={session.access_token} id={orderId} />
+          ) : (
+            <WorkOrdersList accessToken={session.access_token} />
+          )
+        ) : null}
       </div>
     </main>
   )
+}
+
+function WorkOrdersList({ accessToken }: { accessToken: string }) {
+  const [orders, setOrders] = useState<AdminWorkOrderListItem[]>([])
+  const [query, setQuery] = useState('')
+  const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [status, setStatus] = useState<WorkOrderStatus | ''>('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [mechanic, setMechanic] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [totalPages, setTotalPages] = useState(1)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+  const [refreshKey, setRefreshKey] = useState(0)
+
+  useEffect(() => {
+    const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 300)
+    return () => clearTimeout(timeout)
+  }, [query])
+
+  useEffect(() => {
+    let active = true
+    void getAdminWorkOrders(accessToken, {
+      q: debouncedQuery || undefined,
+      estado: status || undefined,
+      fechaDesde: dateFrom || undefined,
+      fechaHasta: dateTo || undefined,
+      mecanico: mechanic.trim() || undefined,
+      page,
+      pageSize: 10,
+    })
+      .then((result) => {
+        if (!active) return
+        setOrders(result.data)
+        setTotal(result.pagination.total)
+        setTotalPages(result.pagination.totalPages)
+      })
+      .catch((cause: unknown) => {
+        if (!active) return
+        setError(cause instanceof Error ? cause.message : 'No se pudieron cargar las órdenes.')
+        setOrders([])
+        setTotal(0)
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [accessToken, debouncedQuery, status, dateFrom, dateTo, mechanic, page, refreshKey])
+
+  function resetPage() {
+    setPage(1)
+    setLoading(true)
+    setError('')
+  }
+
+  function clearFilters() {
+    setQuery('')
+    setDebouncedQuery('')
+    setStatus('')
+    setDateFrom('')
+    setDateTo('')
+    setMechanic('')
+    setPage(1)
+    setLoading(true)
+    setError('')
+  }
+
+  const hasFilters = Boolean(query || status || dateFrom || dateTo || mechanic)
+  const firstResult = total === 0 ? 0 : (page - 1) * 10 + 1
+  const lastResult = Math.min(page * 10, total)
+
+  return (
+    <section>
+      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <p className="max-w-2xl text-slate-600">
+          Consulta, busca y filtra las órdenes registradas en el taller.
+        </p>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              setLoading(true)
+              setError('')
+              setRefreshKey((value) => value + 1)
+            }}
+            disabled={loading}
+            className="rounded-md border border-slate-300 bg-white px-4 py-2 font-semibold disabled:opacity-60"
+          >
+            {loading ? 'Actualizando…' : 'Actualizar'}
+          </button>
+          <Link
+            to="/admin/ordenes/nueva"
+            className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800"
+          >
+            Nueva orden
+          </Link>
+        </div>
+      </div>
+
+      <div className="mb-5 grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-3">
+        <label className="text-sm font-semibold sm:col-span-2 lg:col-span-3">
+          Buscar por número de orden, cliente o placa
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value)
+              resetPage()
+            }}
+            placeholder="Ej. OT-000001, Johan o HAA-1234"
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Estado
+          <select
+            value={status}
+            onChange={(event) => {
+              setStatus(event.target.value as WorkOrderStatus | '')
+              resetPage()
+            }}
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+          >
+            <option value="">Todos los estados</option>
+            <option value="ABIERTA">Abierta</option>
+            <option value="EN_DIAGNOSTICO">En diagnóstico</option>
+            <option value="EN_PROCESO">En proceso</option>
+            <option value="FINALIZADA">Finalizada</option>
+            <option value="CANCELADA">Cancelada</option>
+          </select>
+        </label>
+        <label className="text-sm font-semibold">
+          Desde
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(event) => {
+              setDateFrom(event.target.value)
+              resetPage()
+            }}
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Hasta
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(event) => {
+              setDateTo(event.target.value)
+              resetPage()
+            }}
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+          />
+        </label>
+        <label className="text-sm font-semibold">
+          Mecánico responsable
+          <input
+            type="search"
+            value={mechanic}
+            onChange={(event) => {
+              setMechanic(event.target.value)
+              resetPage()
+            }}
+            placeholder="Nombre"
+            className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+          />
+        </label>
+        <div className="flex items-end">
+          <button
+            type="button"
+            onClick={clearFilters}
+            disabled={!hasFilters}
+            className="rounded-md px-3 py-2 font-semibold text-blue-700 underline disabled:text-slate-400"
+          >
+            Limpiar filtros
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <p
+          role="alert"
+          className="mb-4 rounded-md border border-red-300 bg-red-50 p-4 text-red-900"
+        >
+          {error}
+        </p>
+      )}
+      {loading ? (
+        <p role="status">Cargando órdenes…</p>
+      ) : orders.length === 0 ? (
+        <p className="rounded-xl border border-slate-200 bg-white p-8 text-slate-600">
+          {hasFilters
+            ? 'No se encontraron órdenes con esos criterios.'
+            : 'Todavía no hay órdenes de trabajo registradas.'}
+        </p>
+      ) : (
+        <>
+          <div className="hidden overflow-x-auto rounded-xl border border-slate-200 bg-white shadow-sm md:block">
+            <table className="min-w-[1050px] divide-y divide-slate-200 text-left text-sm">
+              <caption className="sr-only">Órdenes de trabajo registradas</caption>
+              <thead className="bg-slate-100 text-xs uppercase tracking-wide text-slate-600">
+                <tr>
+                  <th className="px-4 py-3" scope="col">
+                    Orden
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Ingreso
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Cliente
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Placa
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Vehículo
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Problema
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Mecánico
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Estado
+                  </th>
+                  <th className="px-4 py-3" scope="col">
+                    Detalle
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {orders.map((order) => (
+                  <tr key={order.id}>
+                    <td className="whitespace-nowrap px-4 py-4 font-bold">{order.numeroOrden}</td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {formatDate(order.fechaIngreso)}
+                    </td>
+                    <td className="px-4 py-4">{order.cliente.name}</td>
+                    <td className="whitespace-nowrap px-4 py-4">{order.vehiculo.plate ?? '—'}</td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      {order.vehiculo.make} {order.vehiculo.model}
+                    </td>
+                    <td className="max-w-xs truncate px-4 py-4">{order.descripcionProblema}</td>
+                    <td className="px-4 py-4">{order.mecanicoResponsable ?? 'Sin asignar'}</td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <StatusBadge status={order.estado} />
+                    </td>
+                    <td className="whitespace-nowrap px-4 py-4">
+                      <Link
+                        className="font-semibold text-blue-700 underline"
+                        to={`/admin/ordenes/${order.id}`}
+                      >
+                        Consultar
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="grid gap-3 md:hidden">
+            {orders.map((order) => (
+              <article
+                key={order.id}
+                className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h2 className="font-bold">{order.numeroOrden}</h2>
+                    <p className="text-sm text-slate-600">{formatDate(order.fechaIngreso)}</p>
+                  </div>
+                  <StatusBadge status={order.estado} />
+                </div>
+                <p className="mt-3 font-semibold">{order.cliente.name}</p>
+                <p className="text-sm text-slate-600">
+                  {order.vehiculo.plate ?? 'Sin placa'} · {order.vehiculo.make}{' '}
+                  {order.vehiculo.model}
+                </p>
+                <p className="mt-2 text-sm">{order.descripcionProblema}</p>
+                <Link
+                  className="mt-3 inline-block font-semibold text-blue-700 underline"
+                  to={`/admin/ordenes/${order.id}`}
+                >
+                  Consultar detalle
+                </Link>
+              </article>
+            ))}
+          </div>
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600">
+              Mostrando {firstResult}–{lastResult} de {total} órdenes
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setPage((value) => value - 1)
+                  setLoading(true)
+                  setError('')
+                }}
+                disabled={page <= 1 || loading}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <span className="text-sm text-slate-600">
+                Página {page} de {totalPages}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setPage((value) => value + 1)
+                  setLoading(true)
+                  setError('')
+                }}
+                disabled={page >= totalPages || loading}
+                className="rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function WorkOrderDetail({ accessToken, id }: { accessToken: string; id: string }) {
+  const [order, setOrder] = useState<AdminWorkOrderDetails | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    void getAdminWorkOrder(accessToken, id)
+      .then((result) => {
+        if (active) setOrder(result)
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setError(cause instanceof Error ? cause.message : 'No se pudo consultar la orden.')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [accessToken, id])
+
+  if (loading) return <p role="status">Cargando detalle de la orden…</p>
+  if (error)
+    return (
+      <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
+        {error}
+      </p>
+    )
+  if (!order) return null
+
+  return (
+    <section className="max-w-4xl space-y-5">
+      <Link to="/admin/ordenes" className="inline-block font-semibold text-blue-700 underline">
+        ← Volver al listado
+      </Link>
+      <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm sm:p-7">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <p className="text-sm font-bold uppercase tracking-wide text-blue-700">
+              Orden de trabajo
+            </p>
+            <h2 className="mt-1 text-2xl font-black">{order.numeroOrden}</h2>
+          </div>
+          <StatusBadge status={order.estado} />
+        </div>
+        <dl className="mt-5 grid gap-4 sm:grid-cols-2">
+          <DetailItem label="Fecha de ingreso" value={formatDate(order.fechaIngreso, true)} />
+          <DetailItem label="Fecha de creación" value={formatDate(order.fechaCreacion, true)} />
+        </dl>
+      </div>
+      <div className="grid gap-5 md:grid-cols-2">
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-4 text-lg font-bold">Cliente</h3>
+          <dl className="space-y-3">
+            <DetailItem label="Nombre" value={order.cliente.name} />
+            <DetailItem label="Teléfono" value={order.cliente.phone || 'No disponible'} />
+            <DetailItem label="Correo" value={order.cliente.email ?? 'No disponible'} />
+          </dl>
+        </section>
+        <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="mb-4 text-lg font-bold">Vehículo</h3>
+          <dl className="space-y-3">
+            <DetailItem label="Placa" value={order.vehiculo.plate ?? 'No registrada'} />
+            <DetailItem
+              label="Marca y modelo"
+              value={`${order.vehiculo.make} ${order.vehiculo.model}`}
+            />
+            <DetailItem label="Año" value={String(order.vehiculo.year)} />
+            <DetailItem
+              label="Kilometraje"
+              value={
+                order.kilometraje === null
+                  ? 'No registrado'
+                  : `${order.kilometraje.toLocaleString('es-HN')} km`
+              }
+            />
+          </dl>
+        </section>
+      </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-bold">Información del trabajo</h3>
+        <dl className="space-y-4">
+          <DetailItem label="Problema reportado" value={order.descripcionProblema} />
+          <DetailItem label="Observaciones" value={order.observaciones ?? 'Sin observaciones'} />
+          <DetailItem
+            label="Mecánico responsable"
+            value={order.mecanicoResponsable ?? 'Sin asignar'}
+          />
+        </dl>
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-3 text-lg font-bold">Cita relacionada</h3>
+        {order.cita ? (
+          <dl className="space-y-3">
+            <DetailItem label="Servicio" value={order.cita.service.name} />
+            <DetailItem label="Fecha" value={formatDate(order.cita.requestedAt, true)} />
+            <DetailItem label="Estado de la cita" value={order.cita.status} />
+          </dl>
+        ) : (
+          <p className="text-slate-600">Esta orden no está asociada a una cita.</p>
+        )}
+      </section>
+    </section>
+  )
+}
+
+function DetailItem({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <dt className="text-sm font-semibold text-slate-500">{label}</dt>
+      <dd className="mt-1 whitespace-pre-wrap">{value}</dd>
+    </div>
+  )
+}
+
+function StatusBadge({ status }: { status: AdminWorkOrderListItem['estado'] }) {
+  const styles: Record<AdminWorkOrderListItem['estado'], string> = {
+    ABIERTA: 'bg-blue-50 text-blue-800',
+    EN_DIAGNOSTICO: 'bg-amber-50 text-amber-800',
+    EN_PROCESO: 'bg-violet-50 text-violet-800',
+    FINALIZADA: 'bg-green-50 text-green-800',
+    CANCELADA: 'bg-red-50 text-red-800',
+  }
+  const labels: Record<AdminWorkOrderListItem['estado'], string> = {
+    ABIERTA: 'Abierta',
+    EN_DIAGNOSTICO: 'En diagnóstico',
+    EN_PROCESO: 'En proceso',
+    FINALIZADA: 'Finalizada',
+    CANCELADA: 'Cancelada',
+  }
+  return (
+    <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${styles[status]}`}>
+      {labels[status]}
+    </span>
+  )
+}
+
+function formatDate(value: string, time = false) {
+  return new Intl.DateTimeFormat('es-HN', {
+    dateStyle: 'medium',
+    ...(time ? { timeStyle: 'short' as const } : {}),
+  }).format(new Date(value))
 }
 
 function CreateWorkOrderForm({ accessToken }: { accessToken: string }) {

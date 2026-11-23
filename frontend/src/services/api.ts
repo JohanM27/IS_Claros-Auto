@@ -120,6 +120,40 @@ export type AdminWorkOrder = {
   vehiculo: { make: string; model: string; year: number; plate: string | null }
 }
 
+export type AdminWorkOrderListItem = {
+  id: string
+  numeroOrden: string
+  descripcionProblema: string
+  mecanicoResponsable: string | null
+  estado: WorkOrderStatus
+  fechaIngreso: string
+  cliente: { name: string }
+  vehiculo: { make: string; model: string; year: number; plate: string | null }
+}
+export type AdminWorkOrderFilters = {
+  q?: string
+  estado?: WorkOrderStatus
+  fechaDesde?: string
+  fechaHasta?: string
+  mecanico?: string
+  page?: number
+  pageSize?: number
+}
+export type AdminWorkOrderPage = {
+  data: AdminWorkOrderListItem[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+export type AdminWorkOrderDetails = Omit<AdminWorkOrder, 'cliente' | 'vehiculo'> & {
+  cliente: { name: string; phone: string; email: string | null }
+  vehiculo: { make: string; model: string; year: number; plate: string | null }
+  cita: {
+    id: string
+    requestedAt: string
+    status: 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA' | 'COMPLETADA'
+    service: { name: string }
+  } | null
+}
+
 export type WorkOrderCustomer = {
   id: string
   name: string
@@ -160,8 +194,20 @@ export function getAdminAppointments(accessToken: string) {
   return authenticatedRequest<AdminAppointment[]>('/admin/citas', accessToken)
 }
 
-export function getAdminWorkOrders(accessToken: string) {
-  return authenticatedRequest<AdminWorkOrder[]>('/admin/ordenes', accessToken)
+export function getAdminWorkOrders(accessToken: string, filters: AdminWorkOrderFilters = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  const search = query.size > 0 ? `?${query.toString()}` : ''
+  return authenticatedRequest<AdminWorkOrderPage>(`/admin/ordenes${search}`, accessToken)
+}
+
+export function getAdminWorkOrder(accessToken: string, id: string) {
+  return authenticatedRequest<AdminWorkOrderDetails>(
+    `/admin/ordenes/${encodeURIComponent(id)}`,
+    accessToken,
+  )
 }
 
 export function searchWorkOrderCustomers(accessToken: string, query: string) {

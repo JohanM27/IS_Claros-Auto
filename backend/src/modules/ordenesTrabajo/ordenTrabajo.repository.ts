@@ -1,11 +1,85 @@
 import { prisma } from '../../config/database.js'
+import { Prisma } from '../../generated/prisma/client.js'
 import { HttpError } from '../../utils/httpError.js'
 import { validarCitaDisponible, validarVehiculoDelCliente } from './ordenTrabajo.validation.js'
 import { formatearNumeroOrden } from './ordenTrabajo.number.js'
 
-export function listarOrdenesTrabajo() {
-  return prisma.workOrder.findMany({
-    orderBy: [{ fechaIngreso: 'desc' }, { fechaCreacion: 'desc' }],
+export type FiltrosOrdenesTrabajo = {
+  q?: string
+  estado?: 'ABIERTA' | 'EN_DIAGNOSTICO' | 'EN_PROCESO' | 'FINALIZADA' | 'CANCELADA'
+  fechaDesde?: string
+  fechaHasta?: string
+  mecanico?: string
+  page: number
+  pageSize: number
+}
+
+export function crearWhereOrdenesTrabajo(filters: FiltrosOrdenesTrabajo) {
+  const where: Prisma.WorkOrderWhereInput = {}
+  const AND: Prisma.WorkOrderWhereInput[] = []
+
+  if (filters.q) {
+    AND.push({
+      OR: [
+        { numeroOrden: { contains: filters.q, mode: 'insensitive' } },
+        { cliente: { name: { contains: filters.q, mode: 'insensitive' } } },
+        { vehiculo: { plate: { contains: filters.q, mode: 'insensitive' } } },
+      ],
+    })
+  }
+  if (filters.estado) AND.push({ estado: filters.estado })
+  if (filters.mecanico) {
+    AND.push({ mecanicoResponsable: { contains: filters.mecanico, mode: 'insensitive' } })
+  }
+  if (filters.fechaDesde || filters.fechaHasta) {
+    const fechaIngreso: Prisma.DateTimeFilter = {}
+    if (filters.fechaDesde) fechaIngreso.gte = new Date(`${filters.fechaDesde}T00:00:00.000Z`)
+    if (filters.fechaHasta) {
+      const exclusiveEnd = new Date(`${filters.fechaHasta}T00:00:00.000Z`)
+      exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1)
+      fechaIngreso.lt = exclusiveEnd
+    }
+    AND.push({ fechaIngreso })
+  }
+  if (AND.length > 0) where.AND = AND
+  return where
+}
+
+export async function listarOrdenesTrabajo(filters: FiltrosOrdenesTrabajo) {
+  const where = crearWhereOrdenesTrabajo(filters)
+  const [total, data] = await Promise.all([
+    prisma.workOrder.count({ where }),
+    prisma.workOrder.findMany({
+      where,
+      skip: (filters.page - 1) * filters.pageSize,
+      take: filters.pageSize,
+      orderBy: [{ fechaIngreso: 'desc' }, { fechaCreacion: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        numeroOrden: true,
+        descripcionProblema: true,
+        mecanicoResponsable: true,
+        estado: true,
+        fechaIngreso: true,
+        cliente: { select: { name: true } },
+        vehiculo: { select: { make: true, model: true, year: true, plate: true } },
+      },
+    }),
+  ])
+  return {
+    data,
+    pagination: {
+      page: filters.page,
+      pageSize: filters.pageSize,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / filters.pageSize)),
+    },
+  }
+}
+
+export function consultarOrdenTrabajo(id: string) {
+  return prisma.workOrder.findUnique({
+    where: { id },
     select: {
       id: true,
       numeroOrden: true,
@@ -20,8 +94,16 @@ export function listarOrdenesTrabajo() {
       fechaIngreso: true,
       fechaCreacion: true,
       fechaActualizacion: true,
-      cliente: { select: { name: true, phone: true } },
+      cliente: { select: { name: true, phone: true, email: true } },
       vehiculo: { select: { make: true, model: true, year: true, plate: true } },
+      cita: {
+        select: {
+          id: true,
+          requestedAt: true,
+          status: true,
+          service: { select: { name: true } },
+        },
+      },
     },
   })
 }

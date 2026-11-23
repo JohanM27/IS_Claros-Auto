@@ -7,14 +7,29 @@ import { HttpError } from '../../utils/httpError.js'
 import {
   buscarCitas,
   buscarClientes,
+  consultarOrdenTrabajo,
   listarOrdenesTrabajo,
   registrarOrdenTrabajo,
+  type FiltrosOrdenesTrabajo,
   type NuevaOrdenInput,
 } from './ordenTrabajo.repository.js'
 
 const rolesAutorizados: EmployeeIdentity['role'][] = ['ADMINISTRADOR', 'RECEPCIONISTA']
-type WorkOrderSummary = Awaited<ReturnType<typeof listarOrdenesTrabajo>>
-type ListWorkOrders = () => Promise<WorkOrderSummary>
+type ListWorkOrders = (filters: FiltrosOrdenesTrabajo) => ReturnType<typeof listarOrdenesTrabajo>
+type GetWorkOrder = (id: string) => Promise<Awaited<ReturnType<typeof consultarOrdenTrabajo>>>
+const listQuerySchema = z
+  .object({
+    q: z.string().trim().max(100).optional(),
+    estado: z
+      .enum(['ABIERTA', 'EN_DIAGNOSTICO', 'EN_PROCESO', 'FINALIZADA', 'CANCELADA'])
+      .optional(),
+    fechaDesde: z.iso.date().optional(),
+    fechaHasta: z.iso.date().optional(),
+    mecanico: z.string().trim().min(1).max(150).optional(),
+    page: z.coerce.number().int().min(1).max(10000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  })
+  .strict()
 const optionalText = (max: number) =>
   z.preprocess(
     (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
@@ -38,6 +53,7 @@ export function crearRutasOrdenesTrabajo(
   authenticate: RequestHandler,
   dependencies: {
     list?: ListWorkOrders
+    get?: GetWorkOrder
     customers?: typeof buscarClientes
     appointments?: typeof buscarCitas
     create?: typeof registrarOrdenTrabajo
@@ -45,6 +61,7 @@ export function crearRutasOrdenesTrabajo(
 ) {
   const router = Router()
   const list = dependencies.list ?? listarOrdenesTrabajo
+  const get = dependencies.get ?? consultarOrdenTrabajo
   const customers = dependencies.customers ?? buscarClientes
   const appointments = dependencies.appointments ?? buscarCitas
   const create = dependencies.create ?? registrarOrdenTrabajo
@@ -78,9 +95,48 @@ export function crearRutasOrdenesTrabajo(
     }
   })
 
-  router.get('/', ...authorize, async (_request, response, next) => {
+  router.get('/:id', ...authorize, async (request, response, next) => {
     try {
-      response.set('Cache-Control', 'no-store').json({ data: await list() })
+      const parsedId = z.uuid().safeParse(request.params.id)
+      if (!parsedId.success)
+        throw new HttpError(400, 'VALIDATION_ERROR', 'El identificador no es válido.')
+      const workOrder = await get(parsedId.data)
+      if (!workOrder)
+        throw new HttpError(404, 'WORK_ORDER_NOT_FOUND', 'No se encontró la orden de trabajo.')
+      response.set('Cache-Control', 'no-store').json({ data: workOrder })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  router.get('/', ...authorize, async (request, response, next) => {
+    try {
+      const parsed = listQuerySchema.safeParse(request.query)
+      if (!parsed.success) {
+        throw new HttpError(
+          400,
+          'VALIDATION_ERROR',
+          'Los filtros o la paginación no son válidos.',
+          {
+            fieldErrors: parsed.error.flatten().fieldErrors,
+          },
+        )
+      }
+      if (
+        parsed.data.fechaDesde &&
+        parsed.data.fechaHasta &&
+        parsed.data.fechaDesde > parsed.data.fechaHasta
+      ) {
+        throw new HttpError(
+          400,
+          'VALIDATION_ERROR',
+          'La fecha inicial debe ser anterior a la final.',
+        )
+      }
+      const result = await list(parsed.data)
+      response
+        .set('Cache-Control', 'no-store')
+        .json({ data: result.data, pagination: result.pagination })
     } catch (error) {
       next(error)
     }

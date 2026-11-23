@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   session: { access_token: 'access-token' } as { access_token: string } | null,
   identity: vi.fn(),
   list: vi.fn(),
+  getOrder: vi.fn(),
   customerSearch: vi.fn(),
   appointments: vi.fn(),
   createOrder: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('../services/api', () => ({
   },
   getEmployeeIdentity: mocks.identity,
   getAdminWorkOrders: mocks.list,
+  getAdminWorkOrder: mocks.getOrder,
   searchWorkOrderCustomers: mocks.customerSearch,
   getWorkOrderAppointments: mocks.appointments,
   createWorkOrder: mocks.createOrder,
@@ -46,25 +48,46 @@ beforeEach(() => {
     role: 'RECEPCIONISTA',
     displayName: 'Recepción',
   })
-  mocks.list.mockResolvedValue([
-    {
-      id: 'work-order-1',
-      numeroOrden: 'OT-0001',
-      clienteId: 'customer-1',
-      vehiculoId: 'vehicle-1',
-      citaId: null,
-      descripcionProblema: 'Ruido al frenar',
-      observaciones: null,
-      mecanicoResponsable: 'Carlos Pérez',
-      kilometraje: 85000,
-      estado: 'ABIERTA',
-      fechaIngreso: '2026-11-19T10:00:00.000Z',
-      fechaCreacion: '2026-11-19T10:00:00.000Z',
-      fechaActualizacion: '2026-11-19T10:00:00.000Z',
-      cliente: { name: 'Johan Moreno', phone: '97000000' },
-      vehiculo: { make: 'Ford', model: 'Escape', year: 2017, plate: null },
-    },
-  ])
+  mocks.list.mockResolvedValue({
+    data: [
+      {
+        id: 'work-order-1',
+        numeroOrden: 'OT-0001',
+        clienteId: 'customer-1',
+        vehiculoId: 'vehicle-1',
+        citaId: null,
+        descripcionProblema: 'Ruido al frenar',
+        observaciones: null,
+        mecanicoResponsable: 'Carlos Pérez',
+        kilometraje: 85000,
+        estado: 'ABIERTA',
+        fechaIngreso: '2026-11-19T10:00:00.000Z',
+        fechaCreacion: '2026-11-19T10:00:00.000Z',
+        fechaActualizacion: '2026-11-19T10:00:00.000Z',
+        cliente: { name: 'Johan Moreno', phone: '97000000' },
+        vehiculo: { make: 'Ford', model: 'Escape', year: 2017, plate: 'ABC123' },
+      },
+    ],
+    pagination: { page: 1, pageSize: 10, total: 1, totalPages: 1 },
+  })
+  mocks.getOrder.mockResolvedValue({
+    id: 'work-order-1',
+    numeroOrden: 'OT-0001',
+    clienteId: 'customer-1',
+    vehiculoId: 'vehicle-1',
+    citaId: null,
+    descripcionProblema: 'Ruido al frenar',
+    observaciones: 'Revisar frenos',
+    mecanicoResponsable: 'Carlos Pérez',
+    kilometraje: 85000,
+    estado: 'ABIERTA',
+    fechaIngreso: '2026-11-19T10:00:00.000Z',
+    fechaCreacion: '2026-11-19T10:00:00.000Z',
+    fechaActualizacion: '2026-11-19T10:00:00.000Z',
+    cliente: { name: 'Johan Moreno', phone: '97000000', email: 'johan@example.com' },
+    vehiculo: { make: 'Ford', model: 'Escape', year: 2017, plate: 'ABC123' },
+    cita: null,
+  })
   mocks.customerSearch.mockResolvedValue([
     {
       id: 'customer-1',
@@ -100,6 +123,7 @@ function renderPage() {
       <Routes>
         <Route path="/admin/ordenes" element={<WorkOrdersPage />} />
         <Route path="/admin/ordenes/nueva" element={<WorkOrdersPage />} />
+        <Route path="/admin/ordenes/:id" element={<WorkOrdersPage />} />
         <Route path="/login" element={<p>Redirigido al inicio de sesión</p>} />
       </Routes>
     </MemoryRouter>,
@@ -119,18 +143,63 @@ describe('página de órdenes de trabajo', () => {
 
       renderPage()
 
-      expect(await screen.findByText('OT-0001')).toBeTruthy()
-      expect(screen.getByText('Ruido al frenar')).toBeTruthy()
+      expect((await screen.findAllByText('OT-0001')).length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Ruido al frenar').length).toBeGreaterThan(0)
       expect(screen.getByRole('navigation', { name: 'Navegación administrativa' })).toBeTruthy()
-      expect(mocks.list).toHaveBeenCalledWith('access-token')
+      expect(mocks.list).toHaveBeenCalledWith('access-token', { page: 1, pageSize: 10 })
     },
   )
 
   it('muestra un estado vacío cuando no hay órdenes registradas', async () => {
-    mocks.list.mockResolvedValue([])
+    mocks.list.mockResolvedValue({
+      data: [],
+      pagination: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+    })
     renderPage()
 
     expect(await screen.findByText('Todavía no hay órdenes de trabajo registradas.')).toBeTruthy()
+  })
+
+  it('consulta una orden y muestra su detalle', async () => {
+    render(
+      <MemoryRouter initialEntries={['/admin/ordenes/work-order-1']}>
+        <Routes>
+          <Route path="/admin/ordenes/:id" element={<WorkOrdersPage />} />
+          <Route path="/login" element={<p>Redirigido al inicio de sesión</p>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(await screen.findByRole('heading', { name: 'OT-0001' })).toBeTruthy()
+    expect(screen.getByText('Johan Moreno')).toBeTruthy()
+    expect(screen.getByText('Revisar frenos')).toBeTruthy()
+    expect(mocks.getOrder).toHaveBeenCalledWith('access-token', 'work-order-1')
+  })
+
+  it('envía filtros combinados y cambia de página en el listado', async () => {
+    const user = userEvent.setup()
+    renderPage()
+
+    await screen.findAllByText('OT-0001')
+    mocks.list.mockResolvedValue({
+      data: [],
+      pagination: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+    })
+    await user.type(screen.getByRole('searchbox', { name: /buscar por número/i }), 'ABC123')
+    await user.selectOptions(screen.getByLabelText('Estado'), 'ABIERTA')
+
+    await waitFor(() => {
+      expect(mocks.list).toHaveBeenLastCalledWith('access-token', {
+        q: 'ABC123',
+        estado: 'ABIERTA',
+        fechaDesde: undefined,
+        fechaHasta: undefined,
+        mecanico: undefined,
+        page: 1,
+        pageSize: 10,
+      })
+    })
+    expect(await screen.findByText('No se encontraron órdenes con esos criterios.')).toBeTruthy()
   })
 
   it('no consulta órdenes para perfiles sin rol administrativo autorizado', async () => {
@@ -190,6 +259,6 @@ describe('página de órdenes de trabajo', () => {
     )
 
     expect(await screen.findByRole('alert')).toBeTruthy()
-    expect(screen.queryByRole('heading', { name: 'Nueva orden de trabajo' })).toBeNull()
+    expect(screen.queryByRole('button', { name: 'Registrar orden de trabajo' })).toBeNull()
   })
 })

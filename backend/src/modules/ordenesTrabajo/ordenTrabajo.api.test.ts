@@ -6,7 +6,7 @@ const id = '5a0ac46b-a8ea-4f19-9cf3-1596c3a202de'
 const secondId = '6b1bd57c-b9fb-4b2a-8df4-2607d4b313ef'
 
 function appFor(role: 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO') {
-  const list = vi.fn().mockResolvedValue([
+  const rows = [
     {
       id,
       numeroOrden: 'OT-0001',
@@ -24,7 +24,29 @@ function appFor(role: 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO') {
       cliente: { name: 'Johan Moreno', phone: '97000000' },
       vehiculo: { make: 'Ford', model: 'Escape', year: 2017, plate: null },
     },
-  ])
+  ]
+  const list = vi.fn().mockResolvedValue({
+    data: rows,
+    pagination: { page: 1, pageSize: 10, total: 1, totalPages: 1 },
+  })
+  const get = vi.fn().mockResolvedValue({
+    id,
+    numeroOrden: 'OT-0001',
+    clienteId: id,
+    vehiculoId: secondId,
+    citaId: null,
+    descripcionProblema: 'Ruido al frenar',
+    observaciones: 'Revisar frenos',
+    mecanicoResponsable: 'Carlos Pérez',
+    kilometraje: 85000,
+    estado: 'ABIERTA',
+    fechaIngreso: new Date('2026-11-19T10:00:00.000Z'),
+    fechaCreacion: new Date('2026-11-19T10:00:00.000Z'),
+    fechaActualizacion: new Date('2026-11-19T10:00:00.000Z'),
+    cliente: { name: 'Johan Moreno', phone: '97000000', email: null },
+    vehiculo: { make: 'Ford', model: 'Escape', year: 2017, plate: 'ABC123' },
+    cita: null,
+  })
   const create = vi.fn().mockImplementation(async (input) => ({
     order: {
       id,
@@ -52,9 +74,9 @@ function appFor(role: 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO') {
       _request.employeeIdentity = { userId: id, email: null, displayName: null, role }
       next()
     },
-    ordenesTrabajo: { list, create, customers, appointments },
+    ordenesTrabajo: { list, get, create, customers, appointments },
   })
-  return { app, list, create, customers, appointments }
+  return { app, list, get, create, customers, appointments }
 }
 
 const validOrder = {
@@ -98,7 +120,12 @@ describe('API administrativa de órdenes de trabajo', () => {
           }
           next()
         },
-        ordenesTrabajo: { list: async () => [] },
+        ordenesTrabajo: {
+          list: async () => ({
+            data: [],
+            pagination: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+          }),
+        },
       }),
     ).get('/api/admin/ordenes')
 
@@ -112,6 +139,89 @@ describe('API administrativa de órdenes de trabajo', () => {
 
     expect(response.status).toBe(403)
     expect(list).not.toHaveBeenCalled()
+  })
+
+  it.each(['OT-000001', 'Johan Moreno', 'ABC123'])(
+    'filtra por el término de búsqueda %s en el backend paginado',
+    async (q) => {
+      const { app, list } = appFor('RECEPCIONISTA')
+      const response = await request(app).get('/api/admin/ordenes').query({ q })
+
+      expect(response.status).toBe(200)
+      expect(response.body.data[0].numeroOrden).toBe('OT-0001')
+      expect(response.body.pagination).toEqual({ page: 1, pageSize: 10, total: 1, totalPages: 1 })
+      expect(list).toHaveBeenCalledWith(expect.objectContaining({ q, page: 1, pageSize: 10 }))
+    },
+  )
+
+  it('combina estado, rango de fechas, mecánico, búsqueda y página', async () => {
+    const { app, list } = appFor('ADMINISTRADOR')
+    const response = await request(app).get('/api/admin/ordenes').query({
+      q: 'Ford',
+      estado: 'EN_PROCESO',
+      fechaDesde: '2026-11-01',
+      fechaHasta: '2026-11-30',
+      mecanico: 'Carlos',
+      page: '3',
+      pageSize: '10',
+    })
+
+    expect(response.status).toBe(200)
+    expect(list).toHaveBeenCalledWith({
+      q: 'Ford',
+      estado: 'EN_PROCESO',
+      fechaDesde: '2026-11-01',
+      fechaHasta: '2026-11-30',
+      mecanico: 'Carlos',
+      page: 3,
+      pageSize: 10,
+    })
+  })
+
+  it('rechaza filtros y paginación fuera de límites', async () => {
+    const { app, list } = appFor('RECEPCIONISTA')
+    const response = await request(app).get('/api/admin/ordenes?page=0&pageSize=1000')
+
+    expect(response.status).toBe(400)
+    expect(list).not.toHaveBeenCalled()
+  })
+
+  it('consulta los datos detallados de una orden existente', async () => {
+    const { app, get } = appFor('RECEPCIONISTA')
+    const response = await request(app).get(`/api/admin/ordenes/${id}`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.data.numeroOrden).toBe('OT-0001')
+    expect(response.body.data.cliente.email).toBeNull()
+    expect(response.body.data.kilometraje).toBe(85000)
+    expect(get).toHaveBeenCalledWith(id)
+  })
+
+  it('responde 404 si la orden no existe', async () => {
+    const response = await request(
+      createApp({
+        authenticateEmployee: (_request, _response, next) => {
+          _request.employeeIdentity = {
+            userId: id,
+            email: null,
+            displayName: null,
+            role: 'ADMINISTRADOR',
+          }
+          next()
+        },
+        ordenesTrabajo: { get: async () => null },
+      }),
+    ).get(`/api/admin/ordenes/${secondId}`)
+
+    expect(response.status).toBe(404)
+  })
+
+  it('bloquea el detalle para MECANICO', async () => {
+    const { app, get } = appFor('MECANICO')
+    const response = await request(app).get(`/api/admin/ordenes/${id}`)
+
+    expect(response.status).toBe(403)
+    expect(get).not.toHaveBeenCalled()
   })
 
   it.each(['ADMINISTRADOR', 'RECEPCIONISTA'] as const)(
