@@ -16,7 +16,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, includeEnvelope = false): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
@@ -44,7 +44,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!payload || !('data' in payload)) {
     throw new ApiError('El servidor devolvió una respuesta inesperada.', response.status)
   }
-  return payload.data
+  return (includeEnvelope ? payload : payload.data) as T
 }
 
 export async function getServices(): Promise<Service[]> {
@@ -179,11 +179,20 @@ export type CreateWorkOrderInput = {
   idempotencyKey: string
 }
 
-async function authenticatedRequest<T>(path: string, accessToken: string, init?: RequestInit) {
-  return request<T>(path, {
-    ...init,
-    headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
-  })
+async function authenticatedRequest<T>(
+  path: string,
+  accessToken: string,
+  init?: RequestInit,
+  includeEnvelope = false,
+) {
+  return request<T>(
+    path,
+    {
+      ...init,
+      headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
+    },
+    includeEnvelope,
+  )
 }
 
 export function getEmployeeIdentity(accessToken: string) {
@@ -200,7 +209,12 @@ export function getAdminWorkOrders(accessToken: string, filters: AdminWorkOrderF
     if (value !== undefined && value !== '') query.set(key, String(value))
   }
   const search = query.size > 0 ? `?${query.toString()}` : ''
-  return authenticatedRequest<AdminWorkOrderPage>(`/admin/ordenes${search}`, accessToken)
+  return authenticatedRequest<AdminWorkOrderPage>(
+    `/admin/ordenes${search}`,
+    accessToken,
+    undefined,
+    true,
+  )
 }
 
 export function getAdminWorkOrder(accessToken: string, id: string) {
