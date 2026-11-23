@@ -7,16 +7,23 @@ import { HttpError } from '../../utils/httpError.js'
 import {
   buscarCitas,
   buscarClientes,
+  cambiarEstadoOrdenTrabajo,
+  consultarHistorialOrdenTrabajo,
   consultarOrdenTrabajo,
   listarOrdenesTrabajo,
   registrarOrdenTrabajo,
   type FiltrosOrdenesTrabajo,
+  type CambioEstadoOrdenInput,
   type NuevaOrdenInput,
 } from './ordenTrabajo.repository.js'
 
 const rolesAutorizados: EmployeeIdentity['role'][] = ['ADMINISTRADOR', 'RECEPCIONISTA']
 type ListWorkOrders = (filters: FiltrosOrdenesTrabajo) => ReturnType<typeof listarOrdenesTrabajo>
 type GetWorkOrder = (id: string) => Promise<Awaited<ReturnType<typeof consultarOrdenTrabajo>>>
+type GetWorkOrderHistory = typeof consultarHistorialOrdenTrabajo
+type ChangeWorkOrderStatus = (
+  input: CambioEstadoOrdenInput,
+) => ReturnType<typeof cambiarEstadoOrdenTrabajo>
 const listQuerySchema = z
   .object({
     q: z.string().trim().max(100).optional(),
@@ -48,12 +55,30 @@ const createSchema = z
     idempotencyKey: z.uuid(),
   })
   .strict()
+const statusSchema = z
+  .object({
+    estadoActual: z.enum(['ABIERTA', 'EN_DIAGNOSTICO', 'EN_PROCESO', 'FINALIZADA', 'CANCELADA']),
+    estado: z.enum(['ABIERTA', 'EN_DIAGNOSTICO', 'EN_PROCESO', 'FINALIZADA', 'CANCELADA']),
+    observaciones: optionalText(2000),
+  })
+  .strict()
+  .superRefine((values, context) => {
+    if (values.estado === 'CANCELADA' && !values.observaciones?.trim()) {
+      context.addIssue({
+        code: 'custom',
+        path: ['observaciones'],
+        message: 'Escribe el motivo para cancelar la orden.',
+      })
+    }
+  })
 
 export function crearRutasOrdenesTrabajo(
   authenticate: RequestHandler,
   dependencies: {
     list?: ListWorkOrders
     get?: GetWorkOrder
+    history?: GetWorkOrderHistory
+    changeStatus?: ChangeWorkOrderStatus
     customers?: typeof buscarClientes
     appointments?: typeof buscarCitas
     create?: typeof registrarOrdenTrabajo
@@ -62,6 +87,8 @@ export function crearRutasOrdenesTrabajo(
   const router = Router()
   const list = dependencies.list ?? listarOrdenesTrabajo
   const get = dependencies.get ?? consultarOrdenTrabajo
+  const history = dependencies.history ?? consultarHistorialOrdenTrabajo
+  const changeStatus = dependencies.changeStatus ?? cambiarEstadoOrdenTrabajo
   const customers = dependencies.customers ?? buscarClientes
   const appointments = dependencies.appointments ?? buscarCitas
   const create = dependencies.create ?? registrarOrdenTrabajo
@@ -90,6 +117,20 @@ export function crearRutasOrdenesTrabajo(
       response
         .set('Cache-Control', 'no-store')
         .json({ data: await appointments(query.data.clienteId, query.data.vehiculoId) })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  router.get('/:id/historial', ...authorize, async (request, response, next) => {
+    try {
+      const parsedId = z.uuid().safeParse(request.params.id)
+      if (!parsedId.success)
+        throw new HttpError(400, 'VALIDATION_ERROR', 'El identificador no es válido.')
+      const records = await history(parsedId.data)
+      if (!records)
+        throw new HttpError(404, 'WORK_ORDER_NOT_FOUND', 'No se encontró la orden de trabajo.')
+      response.set('Cache-Control', 'no-store').json({ data: records })
     } catch (error) {
       next(error)
     }
@@ -137,6 +178,39 @@ export function crearRutasOrdenesTrabajo(
       response
         .set('Cache-Control', 'no-store')
         .json({ data: result.data, pagination: result.pagination })
+    } catch (error) {
+      next(error)
+    }
+  })
+
+  router.patch('/:id/estado', ...authorize, async (request, response, next) => {
+    try {
+      const parsedId = z.uuid().safeParse(request.params.id)
+      if (!parsedId.success)
+        throw new HttpError(400, 'VALIDATION_ERROR', 'El identificador no es válido.')
+      const parsed = statusSchema.safeParse(request.body)
+      if (!parsed.success) {
+        throw new HttpError(
+          400,
+          'VALIDATION_ERROR',
+          'Revisa el nuevo estado y sus observaciones.',
+          {
+            fieldErrors: parsed.error.flatten().fieldErrors,
+          },
+        )
+      }
+      const employee = request.employeeIdentity
+      if (!employee)
+        throw new HttpError(401, 'AUTHENTICATION_REQUIRED', 'Inicia sesión para continuar.')
+
+      const order = await changeStatus({
+        ordenTrabajoId: parsedId.data,
+        estadoActualEsperado: parsed.data.estadoActual,
+        estadoNuevo: parsed.data.estado,
+        observaciones: parsed.data.observaciones ?? null,
+        usuarioId: employee.userId,
+      })
+      response.set('Cache-Control', 'no-store').json({ data: order })
     } catch (error) {
       next(error)
     }

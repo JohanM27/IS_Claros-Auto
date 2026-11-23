@@ -7,15 +7,18 @@ import {
   ApiError,
   getAdminWorkOrder,
   getAdminWorkOrders,
+  getWorkOrderStatusHistory,
   getEmployeeIdentity,
   searchWorkOrderCustomers,
   getWorkOrderAppointments,
   createWorkOrder,
+  updateWorkOrderStatus,
   type AdminWorkOrder,
   type AdminWorkOrderDetails,
   type AdminWorkOrderListItem,
   type EmployeeIdentity,
   type WorkOrderStatus,
+  type WorkOrderStatusHistoryEntry,
   type WorkOrderCustomer,
   type WorkOrderAppointment,
 } from '../services/api'
@@ -431,8 +434,15 @@ function WorkOrdersList({ accessToken }: { accessToken: string }) {
 
 function WorkOrderDetail({ accessToken, id }: { accessToken: string; id: string }) {
   const [order, setOrder] = useState<AdminWorkOrderDetails | null>(null)
+  const [history, setHistory] = useState<WorkOrderStatusHistoryEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [historyLoading, setHistoryLoading] = useState(true)
   const [error, setError] = useState('')
+  const [historyError, setHistoryError] = useState('')
+  const [saveMessage, setSaveMessage] = useState('')
+  const [nextStatus, setNextStatus] = useState<WorkOrderStatus | ''>('')
+  const [observations, setObservations] = useState('')
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -452,8 +462,59 @@ function WorkOrderDetail({ accessToken, id }: { accessToken: string; id: string 
     }
   }, [accessToken, id])
 
+  useEffect(() => {
+    let active = true
+    void getWorkOrderStatusHistory(accessToken, id)
+      .then((records) => {
+        if (active) setHistory(records)
+      })
+      .catch((cause: unknown) => {
+        if (active)
+          setHistoryError(
+            cause instanceof Error ? cause.message : 'No se pudo cargar el historial.',
+          )
+      })
+      .finally(() => {
+        if (active) setHistoryLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [accessToken, id])
+
+  async function saveStatus(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!order || !nextStatus) return
+    setSaving(true)
+    setError('')
+    setHistoryError('')
+    setSaveMessage('')
+    try {
+      const updated = await updateWorkOrderStatus(accessToken, id, {
+        estadoActual: order.estado,
+        estado: nextStatus,
+        observaciones: observations.trim() || null,
+      })
+      setOrder(updated)
+      setObservations('')
+      setNextStatus('')
+      setSaveMessage('El estado se actualizó y quedó registrado en el historial.')
+      try {
+        setHistory(await getWorkOrderStatusHistory(accessToken, id))
+      } catch (cause) {
+        setHistoryError(
+          cause instanceof Error ? cause.message : 'No se pudo actualizar el historial.',
+        )
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo actualizar el estado.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) return <p role="status">Cargando detalle de la orden…</p>
-  if (error)
+  if (error && !order)
     return (
       <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
         {error}
@@ -481,6 +542,108 @@ function WorkOrderDetail({ accessToken, id }: { accessToken: string; id: string 
           <DetailItem label="Fecha de creación" value={formatDate(order.fechaCreacion, true)} />
         </dl>
       </div>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-bold">Estado de la orden</h3>
+        <p className="mb-4 flex items-center gap-2">
+          <span className="font-semibold">Estado actual:</span>
+          <StatusBadge status={order.estado} />
+        </p>
+        {availableWorkOrderTransitions[order.estado].length > 0 ? (
+          <form className="grid gap-4 sm:grid-cols-2" onSubmit={(event) => void saveStatus(event)}>
+            <label className="text-sm font-semibold">
+              Nuevo estado
+              <select
+                required
+                value={nextStatus}
+                onChange={(event) => setNextStatus(event.target.value as WorkOrderStatus | '')}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              >
+                <option value="">Selecciona un estado</option>
+                {availableWorkOrderTransitions[order.estado].map((status) => (
+                  <option key={status} value={status}>
+                    {workOrderStatusLabels[status]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="text-sm font-semibold sm:row-span-2">
+              Observaciones o motivo
+              <textarea
+                value={observations}
+                onChange={(event) => setObservations(event.target.value)}
+                required={nextStatus === 'CANCELADA'}
+                maxLength={2000}
+                rows={3}
+                placeholder={
+                  nextStatus === 'CANCELADA' ? 'Motivo obligatorio para cancelar' : 'Opcional'
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={saving || !nextStatus}
+                className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white hover:bg-blue-800 disabled:opacity-60"
+              >
+                {saving ? 'Guardando…' : 'Guardar cambio'}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <p className="text-slate-600">
+            Esta orden ya está cerrada y no admite más cambios de estado.
+          </p>
+        )}
+        {error && (
+          <p
+            role="alert"
+            className="mt-4 rounded-md border border-red-300 bg-red-50 p-3 text-red-900"
+          >
+            {error}
+          </p>
+        )}
+        {saveMessage && (
+          <p role="status" className="mt-4 text-sm font-semibold text-green-800">
+            {saveMessage}
+          </p>
+        )}
+      </section>
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-bold">Historial de la orden</h3>
+        {historyError && (
+          <p
+            role="alert"
+            className="mb-4 rounded-md border border-red-300 bg-red-50 p-3 text-red-900"
+          >
+            {historyError}
+          </p>
+        )}
+        {historyLoading ? (
+          <p role="status">Cargando historial…</p>
+        ) : history.length === 0 ? (
+          <p className="text-slate-600">Todavía no hay cambios de estado registrados.</p>
+        ) : (
+          <ol className="space-y-4 border-l-2 border-slate-200 pl-5">
+            {history.map((entry) => (
+              <li key={entry.id} className="relative">
+                <span className="absolute -left-[1.63rem] top-1 h-3 w-3 rounded-full bg-blue-700" />
+                <p className="font-semibold">
+                  {workOrderStatusLabels[entry.estadoAnterior]} →{' '}
+                  {workOrderStatusLabels[entry.estadoNuevo]}
+                </p>
+                <p className="text-sm text-slate-600">
+                  {formatDate(entry.fechaCambio, true)} ·{' '}
+                  {entry.usuario.displayName || entry.usuario.userId}
+                </p>
+                {entry.observaciones && (
+                  <p className="mt-1 whitespace-pre-wrap text-sm">{entry.observaciones}</p>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
       <div className="grid gap-5 md:grid-cols-2">
         <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="mb-4 text-lg font-bold">Cliente</h3>
@@ -537,6 +700,22 @@ function WorkOrderDetail({ accessToken, id }: { accessToken: string; id: string 
   )
 }
 
+const workOrderStatusLabels: Record<WorkOrderStatus, string> = {
+  ABIERTA: 'Abierta',
+  EN_DIAGNOSTICO: 'En diagnóstico',
+  EN_PROCESO: 'En proceso',
+  FINALIZADA: 'Finalizada',
+  CANCELADA: 'Cancelada',
+}
+
+const availableWorkOrderTransitions: Record<WorkOrderStatus, WorkOrderStatus[]> = {
+  ABIERTA: ['EN_DIAGNOSTICO', 'CANCELADA'],
+  EN_DIAGNOSTICO: ['EN_PROCESO', 'CANCELADA'],
+  EN_PROCESO: ['FINALIZADA', 'CANCELADA'],
+  FINALIZADA: [],
+  CANCELADA: [],
+}
+
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
     <div>
@@ -554,16 +733,9 @@ function StatusBadge({ status }: { status: AdminWorkOrderListItem['estado'] }) {
     FINALIZADA: 'bg-green-50 text-green-800',
     CANCELADA: 'bg-red-50 text-red-800',
   }
-  const labels: Record<AdminWorkOrderListItem['estado'], string> = {
-    ABIERTA: 'Abierta',
-    EN_DIAGNOSTICO: 'En diagnóstico',
-    EN_PROCESO: 'En proceso',
-    FINALIZADA: 'Finalizada',
-    CANCELADA: 'Cancelada',
-  }
   return (
     <span className={`inline-flex rounded-full px-3 py-1 text-xs font-bold ${styles[status]}`}>
-      {labels[status]}
+      {workOrderStatusLabels[status]}
     </span>
   )
 }

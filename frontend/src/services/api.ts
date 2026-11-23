@@ -153,6 +153,19 @@ export type AdminWorkOrderDetails = Omit<AdminWorkOrder, 'cliente' | 'vehiculo'>
     service: { name: string }
   } | null
 }
+export type WorkOrderStatusHistoryEntry = {
+  id: string
+  estadoAnterior: WorkOrderStatus
+  estadoNuevo: WorkOrderStatus
+  observaciones: string | null
+  fechaCambio: string
+  usuario: { userId: string; displayName: string | null }
+}
+export type ChangeWorkOrderStatusInput = {
+  estadoActual: WorkOrderStatus
+  estado: WorkOrderStatus
+  observaciones: string | null
+}
 
 export type WorkOrderCustomer = {
   id: string
@@ -221,6 +234,25 @@ export function getAdminWorkOrder(accessToken: string, id: string) {
   return authenticatedRequest<AdminWorkOrderDetails>(
     `/admin/ordenes/${encodeURIComponent(id)}`,
     accessToken,
+  )
+}
+
+export function getWorkOrderStatusHistory(accessToken: string, id: string) {
+  return authenticatedRequest<WorkOrderStatusHistoryEntry[]>(
+    `/admin/ordenes/${encodeURIComponent(id)}/historial`,
+    accessToken,
+  )
+}
+
+export function updateWorkOrderStatus(
+  accessToken: string,
+  id: string,
+  input: ChangeWorkOrderStatusInput,
+) {
+  return authenticatedRequest<AdminWorkOrderDetails>(
+    `/admin/ordenes/${encodeURIComponent(id)}/estado`,
+    accessToken,
+    { method: 'PATCH', body: JSON.stringify(input) },
   )
 }
 

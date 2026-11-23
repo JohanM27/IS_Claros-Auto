@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   identity: vi.fn(),
   list: vi.fn(),
   getOrder: vi.fn(),
+  history: vi.fn(),
+  updateStatus: vi.fn(),
   customerSearch: vi.fn(),
   appointments: vi.fn(),
   createOrder: vi.fn(),
@@ -32,6 +34,8 @@ vi.mock('../services/api', () => ({
   getEmployeeIdentity: mocks.identity,
   getAdminWorkOrders: mocks.list,
   getAdminWorkOrder: mocks.getOrder,
+  getWorkOrderStatusHistory: mocks.history,
+  updateWorkOrderStatus: mocks.updateStatus,
   searchWorkOrderCustomers: mocks.customerSearch,
   getWorkOrderAppointments: mocks.appointments,
   createWorkOrder: mocks.createOrder,
@@ -88,6 +92,11 @@ beforeEach(() => {
     vehiculo: { make: 'Ford', model: 'Escape', year: 2017, plate: 'ABC123' },
     cita: null,
   })
+  mocks.history.mockResolvedValue([])
+  mocks.updateStatus.mockImplementation(async (_token, _id, input) => ({
+    ...(await mocks.getOrder()),
+    estado: input.estado,
+  }))
   mocks.customerSearch.mockResolvedValue([
     {
       id: 'customer-1',
@@ -174,6 +183,44 @@ describe('página de órdenes de trabajo', () => {
     expect(screen.getByText('Johan Moreno')).toBeTruthy()
     expect(screen.getByText('Revisar frenos')).toBeTruthy()
     expect(mocks.getOrder).toHaveBeenCalledWith('access-token', 'work-order-1')
+  })
+
+  it('permite actualizar el estado y refresca el historial de auditoría', async () => {
+    const user = userEvent.setup()
+    mocks.history.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      {
+        id: 'history-1',
+        estadoAnterior: 'ABIERTA',
+        estadoNuevo: 'EN_DIAGNOSTICO',
+        observaciones: 'Inicia revisión',
+        fechaCambio: '2026-11-20T10:00:00.000Z',
+        usuario: { userId: 'employee-1', displayName: 'Recepción' },
+      },
+    ])
+    render(
+      <MemoryRouter initialEntries={['/admin/ordenes/work-order-1']}>
+        <Routes>
+          <Route path="/admin/ordenes/:id" element={<WorkOrdersPage />} />
+          <Route path="/login" element={<p>Redirigido al inicio de sesión</p>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    await screen.findByText('Todavía no hay cambios de estado registrados.')
+    await user.selectOptions(screen.getByLabelText('Nuevo estado'), 'EN_DIAGNOSTICO')
+    await user.type(screen.getByLabelText('Observaciones o motivo'), 'Inicia revisión')
+    await user.click(screen.getByRole('button', { name: 'Guardar cambio' }))
+
+    expect(
+      await screen.findByText('El estado se actualizó y quedó registrado en el historial.'),
+    ).toBeTruthy()
+    expect(screen.getByText('Abierta → En diagnóstico')).toBeTruthy()
+    expect(screen.getAllByText('Inicia revisión').length).toBeGreaterThan(0)
+    expect(mocks.updateStatus).toHaveBeenCalledWith('access-token', 'work-order-1', {
+      estadoActual: 'ABIERTA',
+      estado: 'EN_DIAGNOSTICO',
+      observaciones: 'Inicia revisión',
+    })
   })
 
   it('envía filtros combinados y cambia de página en el listado', async () => {

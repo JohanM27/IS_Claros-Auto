@@ -47,6 +47,20 @@ function appFor(role: 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO') {
     vehiculo: { make: 'Ford', model: 'Escape', year: 2017, plate: 'ABC123' },
     cita: null,
   })
+  const history = vi.fn().mockResolvedValue([
+    {
+      id: secondId,
+      estadoAnterior: 'ABIERTA',
+      estadoNuevo: 'EN_DIAGNOSTICO',
+      observaciones: 'Ingreso a diagnóstico',
+      fechaCambio: new Date('2026-11-19T11:00:00.000Z'),
+      usuario: { userId: id, displayName: 'Johan Moreno' },
+    },
+  ])
+  const changeStatus = vi.fn().mockImplementation(async (input) => ({
+    ...(await get()),
+    estado: input.estadoNuevo,
+  }))
   const create = vi.fn().mockImplementation(async (input) => ({
     order: {
       id,
@@ -74,9 +88,9 @@ function appFor(role: 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO') {
       _request.employeeIdentity = { userId: id, email: null, displayName: null, role }
       next()
     },
-    ordenesTrabajo: { list, get, create, customers, appointments },
+    ordenesTrabajo: { list, get, history, changeStatus, create, customers, appointments },
   })
-  return { app, list, get, create, customers, appointments }
+  return { app, list, get, history, changeStatus, create, customers, appointments }
 }
 
 const validOrder = {
@@ -96,6 +110,17 @@ describe('API administrativa de órdenes de trabajo', () => {
     const response = await request(createApp()).get('/api/admin/ordenes')
 
     expect(response.status).toBe(401)
+  })
+
+  it('requiere sesión para consultar historial y cambiar el estado', async () => {
+    const unauthenticated = createApp()
+    const historyResponse = await request(unauthenticated).get(`/api/admin/ordenes/${id}/historial`)
+    const statusResponse = await request(unauthenticated)
+      .patch(`/api/admin/ordenes/${id}/estado`)
+      .send({ estadoActual: 'ABIERTA', estado: 'EN_DIAGNOSTICO' })
+
+    expect(historyResponse.status).toBe(401)
+    expect(statusResponse.status).toBe(401)
   })
 
   it.each(['ADMINISTRADOR', 'RECEPCIONISTA'] as const)('permite listar al rol %s', async (role) => {
@@ -222,6 +247,67 @@ describe('API administrativa de órdenes de trabajo', () => {
 
     expect(response.status).toBe(403)
     expect(get).not.toHaveBeenCalled()
+  })
+
+  it('consulta historial persistido ordenado desde el endpoint protegido', async () => {
+    const { app, history } = appFor('RECEPCIONISTA')
+    const response = await request(app).get(`/api/admin/ordenes/${id}/historial`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.data[0].estadoNuevo).toBe('EN_DIAGNOSTICO')
+    expect(history).toHaveBeenCalledWith(id)
+  })
+
+  it.each(['ADMINISTRADOR', 'RECEPCIONISTA'] as const)(
+    'permite a %s cambiar el estado usando el usuario autenticado',
+    async (role) => {
+      const { app, changeStatus } = appFor(role)
+      const response = await request(app).patch(`/api/admin/ordenes/${id}/estado`).send({
+        estadoActual: 'ABIERTA',
+        estado: 'EN_DIAGNOSTICO',
+        observaciones: 'Revisión inicial',
+      })
+
+      expect(response.status).toBe(200)
+      expect(response.body.data.estado).toBe('EN_DIAGNOSTICO')
+      expect(changeStatus).toHaveBeenCalledWith({
+        ordenTrabajoId: id,
+        estadoActualEsperado: 'ABIERTA',
+        estadoNuevo: 'EN_DIAGNOSTICO',
+        observaciones: 'Revisión inicial',
+        usuarioId: id,
+      })
+    },
+  )
+
+  it('no acepta un estado inexistente ni un usuario enviado desde el cliente', async () => {
+    const { app, changeStatus } = appFor('ADMINISTRADOR')
+    const invalidStatus = await request(app)
+      .patch(`/api/admin/ordenes/${id}/estado`)
+      .send({ estadoActual: 'ABIERTA', estado: 'MECANICO' })
+    const spoofedActor = await request(app)
+      .patch(`/api/admin/ordenes/${id}/estado`)
+      .send({ estadoActual: 'ABIERTA', estado: 'EN_DIAGNOSTICO', usuarioId: secondId })
+
+    expect(invalidStatus.status).toBe(400)
+    expect(spoofedActor.status).toBe(400)
+    expect(changeStatus).not.toHaveBeenCalled()
+  })
+
+  it('exige motivo para cancelar y deniega cambios a MECANICO', async () => {
+    const admin = appFor('ADMINISTRADOR')
+    const noReason = await request(admin.app)
+      .patch(`/api/admin/ordenes/${id}/estado`)
+      .send({ estadoActual: 'ABIERTA', estado: 'CANCELADA', observaciones: '  ' })
+    const mechanic = appFor('MECANICO')
+    const forbidden = await request(mechanic.app)
+      .patch(`/api/admin/ordenes/${id}/estado`)
+      .send({ estadoActual: 'ABIERTA', estado: 'EN_DIAGNOSTICO' })
+
+    expect(noReason.status).toBe(400)
+    expect(admin.changeStatus).not.toHaveBeenCalled()
+    expect(forbidden.status).toBe(403)
+    expect(mechanic.changeStatus).not.toHaveBeenCalled()
   })
 
   it.each(['ADMINISTRADOR', 'RECEPCIONISTA'] as const)(
