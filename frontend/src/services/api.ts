@@ -16,7 +16,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function request<T>(path: string, init?: RequestInit, includeEnvelope = false): Promise<T> {
   let response: Response
   try {
     response = await fetch(`${apiBaseUrl}${path}`, {
@@ -44,7 +44,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   if (!payload || !('data' in payload)) {
     throw new ApiError('El servidor devolvió una respuesta inesperada.', response.status)
   }
-  return payload.data
+  return (includeEnvelope ? payload : payload.data) as T
 }
 
 export async function getServices(): Promise<Service[]> {
@@ -120,6 +120,40 @@ export type AdminWorkOrder = {
   vehiculo: { make: string; model: string; year: number; plate: string | null }
 }
 
+export type AdminWorkOrderListItem = {
+  id: string
+  numeroOrden: string
+  descripcionProblema: string
+  mecanicoResponsable: string | null
+  estado: WorkOrderStatus
+  fechaIngreso: string
+  cliente: { name: string }
+  vehiculo: { make: string; model: string; year: number; plate: string | null }
+}
+export type AdminWorkOrderFilters = {
+  q?: string
+  estado?: WorkOrderStatus
+  fechaDesde?: string
+  fechaHasta?: string
+  mecanico?: string
+  page?: number
+  pageSize?: number
+}
+export type AdminWorkOrderPage = {
+  data: AdminWorkOrderListItem[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+export type AdminWorkOrderDetails = Omit<AdminWorkOrder, 'cliente' | 'vehiculo'> & {
+  cliente: { name: string; phone: string; email: string | null }
+  vehiculo: { make: string; model: string; year: number; plate: string | null }
+  cita: {
+    id: string
+    requestedAt: string
+    status: 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA' | 'COMPLETADA'
+    service: { name: string }
+  } | null
+}
+
 export type WorkOrderCustomer = {
   id: string
   name: string
@@ -145,11 +179,20 @@ export type CreateWorkOrderInput = {
   idempotencyKey: string
 }
 
-async function authenticatedRequest<T>(path: string, accessToken: string, init?: RequestInit) {
-  return request<T>(path, {
-    ...init,
-    headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
-  })
+async function authenticatedRequest<T>(
+  path: string,
+  accessToken: string,
+  init?: RequestInit,
+  includeEnvelope = false,
+) {
+  return request<T>(
+    path,
+    {
+      ...init,
+      headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
+    },
+    includeEnvelope,
+  )
 }
 
 export function getEmployeeIdentity(accessToken: string) {
@@ -160,8 +203,25 @@ export function getAdminAppointments(accessToken: string) {
   return authenticatedRequest<AdminAppointment[]>('/admin/citas', accessToken)
 }
 
-export function getAdminWorkOrders(accessToken: string) {
-  return authenticatedRequest<AdminWorkOrder[]>('/admin/ordenes', accessToken)
+export function getAdminWorkOrders(accessToken: string, filters: AdminWorkOrderFilters = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  const search = query.size > 0 ? `?${query.toString()}` : ''
+  return authenticatedRequest<AdminWorkOrderPage>(
+    `/admin/ordenes${search}`,
+    accessToken,
+    undefined,
+    true,
+  )
+}
+
+export function getAdminWorkOrder(accessToken: string, id: string) {
+  return authenticatedRequest<AdminWorkOrderDetails>(
+    `/admin/ordenes/${encodeURIComponent(id)}`,
+    accessToken,
+  )
 }
 
 export function searchWorkOrderCustomers(accessToken: string, query: string) {

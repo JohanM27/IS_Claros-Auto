@@ -15,6 +15,7 @@ export function App() {
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/ordenes" element={<WorkOrdersPage />} />
       <Route path="/admin/ordenes/nueva" element={<WorkOrdersPage />} />
+      <Route path="/admin/ordenes/:id" element={<WorkOrdersPage />} />
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/servicios" element={<ServicesPage />} />
