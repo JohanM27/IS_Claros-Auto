@@ -13,6 +13,13 @@ import {
   getWorkOrderAppointments,
   createWorkOrder,
   updateWorkOrderStatus,
+  getWorkOrderDiagnosis,
+  saveWorkOrderDiagnosis,
+  getWorkOrderTasks,
+  createWorkOrderTask,
+  updateWorkOrderTask,
+  removeWorkOrderTask,
+  getWorkOrderRecordAudit,
   type AdminWorkOrder,
   type AdminWorkOrderDetails,
   type AdminWorkOrderListItem,
@@ -21,6 +28,10 @@ import {
   type WorkOrderStatusHistoryEntry,
   type WorkOrderCustomer,
   type WorkOrderAppointment,
+  type WorkOrderDiagnosis,
+  type WorkTask,
+  type WorkOrderRecordAudit,
+  type WorkTaskInput,
 } from '../services/api'
 
 export function WorkOrdersPage() {
@@ -684,6 +695,7 @@ function WorkOrderDetail({ accessToken, id }: { accessToken: string; id: string 
           />
         </dl>
       </section>
+      <WorkOrderRecords accessToken={accessToken} order={order} />
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <h3 className="mb-3 text-lg font-bold">Cita relacionada</h3>
         {order.cita ? (
@@ -697,6 +709,466 @@ function WorkOrderDetail({ accessToken, id }: { accessToken: string; id: string 
         )}
       </section>
     </section>
+  )
+}
+
+function WorkOrderRecords({
+  accessToken,
+  order,
+}: {
+  accessToken: string
+  order: AdminWorkOrderDetails
+}) {
+  const [diagnosis, setDiagnosis] = useState<WorkOrderDiagnosis | null>(null)
+  const [tasks, setTasks] = useState<WorkTask[]>([])
+  const [total, setTotal] = useState('0.00')
+  const [audit, setAudit] = useState<WorkOrderRecordAudit[]>([])
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
+  const [diagnosisFields, setDiagnosisFields] = useState({
+    diagnostico: '',
+    causaIdentificada: '',
+    recomendaciones: '',
+    observaciones: '',
+  })
+  const emptyTask: WorkTaskInput = {
+    nombre: '',
+    descripcion: '',
+    cantidad: '1',
+    precioUnitario: '0.00',
+    mecanicoResponsable: order.mecanicoResponsable ?? '',
+  }
+  const [taskFields, setTaskFields] = useState<WorkTaskInput>(emptyTask)
+  const [editingTask, setEditingTask] = useState<WorkTask | null>(null)
+  const readOnly = order.estado === 'FINALIZADA' || order.estado === 'CANCELADA'
+
+  async function loadRecords() {
+    const [diagnosisResult, tasksResult, auditResult] = await Promise.all([
+      getWorkOrderDiagnosis(accessToken, order.id),
+      getWorkOrderTasks(accessToken, order.id),
+      getWorkOrderRecordAudit(accessToken, order.id),
+    ])
+    setDiagnosis(diagnosisResult)
+    setDiagnosisFields({
+      diagnostico: diagnosisResult?.diagnostico ?? '',
+      causaIdentificada: diagnosisResult?.causaIdentificada ?? '',
+      recomendaciones: diagnosisResult?.recomendaciones ?? '',
+      observaciones: diagnosisResult?.observaciones ?? '',
+    })
+    setTasks(tasksResult.trabajos)
+    setTotal(tasksResult.totalManoObra)
+    setAudit(auditResult)
+  }
+
+  useEffect(() => {
+    let active = true
+    void Promise.resolve()
+      .then(() => loadRecords())
+      .catch((cause: unknown) => {
+        if (active)
+          setError(
+            cause instanceof Error
+              ? cause.message
+              : 'No se pudieron cargar diagnóstico y trabajos.',
+          )
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+    // loadRecords intentionally uses the order id/token as its data boundary.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accessToken, order.id])
+
+  async function refreshAfterWrite(success: string) {
+    setError('')
+    setMessage('')
+    try {
+      await loadRecords()
+      setMessage(success)
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Se guardó, pero no se pudo recargar la información.',
+      )
+    }
+  }
+
+  async function saveDiagnosis(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      await saveWorkOrderDiagnosis(accessToken, order.id, {
+        diagnostico: diagnosisFields.diagnostico,
+        causaIdentificada: diagnosisFields.causaIdentificada.trim() || null,
+        recomendaciones: diagnosisFields.recomendaciones.trim() || null,
+        observaciones: diagnosisFields.observaciones.trim() || null,
+      })
+      await refreshAfterWrite('El diagnóstico quedó guardado con su trazabilidad.')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar el diagnóstico.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function saveTask(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setSaving(true)
+    setError('')
+    try {
+      if (editingTask) {
+        await updateWorkOrderTask(accessToken, order.id, editingTask.id, {
+          ...taskFields,
+          descripcion: taskFields.descripcion?.trim() || null,
+          mecanicoResponsable: taskFields.mecanicoResponsable?.trim() || null,
+          fechaActualizacionEsperada: editingTask.fechaActualizacion,
+        })
+      } else {
+        await createWorkOrderTask(accessToken, order.id, {
+          ...taskFields,
+          descripcion: taskFields.descripcion?.trim() || null,
+          mecanicoResponsable: taskFields.mecanicoResponsable?.trim() || null,
+          idempotencyKey: crypto.randomUUID(),
+        })
+      }
+      setEditingTask(null)
+      setTaskFields(emptyTask)
+      await refreshAfterWrite(
+        editingTask ? 'El trabajo se actualizó.' : 'El trabajo quedó registrado.',
+      )
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo guardar el trabajo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function retireTask(task: WorkTask) {
+    if (
+      !window.confirm(
+        `¿Retirar “${task.nombre}” del total de mano de obra? El registro se conservará en el historial.`,
+      )
+    )
+      return
+    setSaving(true)
+    setError('')
+    try {
+      await removeWorkOrderTask(accessToken, order.id, task.id, task.fechaActualizacion)
+      await refreshAfterWrite('El trabajo fue retirado del total y conservado en la auditoría.')
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'No se pudo retirar el trabajo.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  function beginEdit(task: WorkTask) {
+    setEditingTask(task)
+    setTaskFields({
+      nombre: task.nombre,
+      descripcion: task.descripcion ?? '',
+      cantidad: task.cantidad,
+      precioUnitario: task.precioUnitario,
+      mecanicoResponsable: task.mecanicoResponsable ?? '',
+    })
+  }
+
+  const money = (value: string) =>
+    new Intl.NumberFormat('es-HN', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Number(value))
+
+  return (
+    <div className="space-y-5">
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-1 text-lg font-bold">Diagnóstico del vehículo</h3>
+        <p className="mb-4 text-sm text-slate-600">
+          Problema reportado por el cliente: <strong>{order.descripcionProblema}</strong>
+        </p>
+        <p className="mb-3 text-sm text-slate-600">
+          Mecánico responsable: <strong>{order.mecanicoResponsable ?? 'Sin asignar'}</strong>
+          {diagnosis && (
+            <>
+              {' '}
+              · Fecha del diagnóstico: {formatDate(diagnosis.fechaDiagnostico, true)} · Registró{' '}
+              {diagnosis.usuarioRegistro.displayName || diagnosis.usuarioRegistro.userId}; última
+              actualización {formatDate(diagnosis.fechaActualizacion, true)} por{' '}
+              {diagnosis.usuarioActualizacion.displayName || diagnosis.usuarioActualizacion.userId}.
+            </>
+          )}
+        </p>
+        {loading ? (
+          <p role="status">Cargando diagnóstico…</p>
+        ) : (
+          <form
+            className="grid gap-4 sm:grid-cols-2"
+            onSubmit={(event) => void saveDiagnosis(event)}
+          >
+            <label className="text-sm font-semibold sm:col-span-2">
+              Diagnóstico técnico *
+              <textarea
+                required
+                maxLength={4000}
+                rows={3}
+                disabled={readOnly}
+                value={diagnosisFields.diagnostico}
+                onChange={(event) =>
+                  setDiagnosisFields({ ...diagnosisFields, diagnostico: event.target.value })
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="text-sm font-semibold">
+              Causa identificada
+              <textarea
+                maxLength={2000}
+                rows={2}
+                disabled={readOnly}
+                value={diagnosisFields.causaIdentificada}
+                onChange={(event) =>
+                  setDiagnosisFields({ ...diagnosisFields, causaIdentificada: event.target.value })
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="text-sm font-semibold">
+              Reparaciones recomendadas
+              <textarea
+                maxLength={2000}
+                rows={2}
+                disabled={readOnly}
+                value={diagnosisFields.recomendaciones}
+                onChange={(event) =>
+                  setDiagnosisFields({ ...diagnosisFields, recomendaciones: event.target.value })
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="text-sm font-semibold sm:col-span-2">
+              Observaciones del mecánico
+              <textarea
+                maxLength={2000}
+                rows={2}
+                disabled={readOnly}
+                value={diagnosisFields.observaciones}
+                onChange={(event) =>
+                  setDiagnosisFields({ ...diagnosisFields, observaciones: event.target.value })
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            {!readOnly && (
+              <button
+                disabled={saving}
+                className="w-fit rounded-md bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-60"
+              >
+                {saving
+                  ? 'Guardando…'
+                  : diagnosis
+                    ? 'Actualizar diagnóstico'
+                    : 'Guardar diagnóstico'}
+              </button>
+            )}
+          </form>
+        )}
+      </section>
+
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-bold">Trabajos realizados</h3>
+        {loading ? (
+          <p role="status">Cargando trabajos…</p>
+        ) : tasks.length === 0 ? (
+          <p className="mb-4 text-slate-600">Todavía no hay trabajos registrados.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] border-collapse text-left text-sm">
+              <thead>
+                <tr className="border-b border-slate-200">
+                  <th className="p-2">Trabajo</th>
+                  <th className="p-2">Cantidad</th>
+                  <th className="p-2">Precio unitario</th>
+                  <th className="p-2">Subtotal</th>
+                  <th className="p-2">Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tasks.map((task) => (
+                  <tr key={task.id} className="border-b border-slate-100">
+                    <td className="p-2">
+                      <strong>{task.nombre}</strong>
+                      {task.descripcion && <p className="text-slate-600">{task.descripcion}</p>}
+                      {task.mecanicoResponsable && (
+                        <p className="text-xs text-slate-500">
+                          Mecánico: {task.mecanicoResponsable}
+                        </p>
+                      )}
+                    </td>
+                    <td className="p-2">{task.cantidad}</td>
+                    <td className="p-2">{money(task.precioUnitario)}</td>
+                    <td className="p-2">{money(task.subtotal)}</td>
+                    <td className="p-2">
+                      {!readOnly && (
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => beginEdit(task)}
+                            className="text-blue-700 underline"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void retireTask(task)}
+                            className="text-red-700 underline"
+                          >
+                            Retirar
+                          </button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="mt-4 text-right text-lg font-bold">Total mano de obra: HNL {money(total)}</p>
+        {!readOnly && (
+          <form
+            className="mt-5 grid gap-3 border-t border-slate-200 pt-5 sm:grid-cols-2"
+            onSubmit={(event) => void saveTask(event)}
+          >
+            <h4 className="font-bold sm:col-span-2">
+              {editingTask ? 'Editar trabajo' : 'Agregar trabajo'}
+            </h4>
+            <label className="text-sm font-semibold">
+              Nombre *
+              <input
+                required
+                maxLength={150}
+                value={taskFields.nombre}
+                onChange={(event) => setTaskFields({ ...taskFields, nombre: event.target.value })}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="text-sm font-semibold">
+              Descripción
+              <textarea
+                maxLength={2000}
+                value={taskFields.descripcion ?? ''}
+                onChange={(event) =>
+                  setTaskFields({ ...taskFields, descripcion: event.target.value })
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="text-sm font-semibold">
+              Cantidad *
+              <input
+                type="number"
+                required
+                min="0.01"
+                step="0.01"
+                value={taskFields.cantidad}
+                onChange={(event) => setTaskFields({ ...taskFields, cantidad: event.target.value })}
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="text-sm font-semibold">
+              Precio unitario (HNL) *
+              <input
+                type="number"
+                required
+                min="0"
+                step="0.01"
+                value={taskFields.precioUnitario}
+                onChange={(event) =>
+                  setTaskFields({ ...taskFields, precioUnitario: event.target.value })
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <label className="text-sm font-semibold">
+              Mecánico responsable
+              <input
+                maxLength={150}
+                value={taskFields.mecanicoResponsable ?? ''}
+                onChange={(event) =>
+                  setTaskFields({ ...taskFields, mecanicoResponsable: event.target.value })
+                }
+                className="mt-1 block w-full rounded-md border border-slate-300 px-3 py-2 font-normal"
+              />
+            </label>
+            <div className="flex items-end gap-3">
+              <button
+                disabled={saving}
+                className="rounded-md bg-blue-700 px-4 py-2 font-semibold text-white disabled:opacity-60"
+              >
+                {saving ? 'Guardando…' : editingTask ? 'Guardar edición' : 'Agregar trabajo'}
+              </button>
+              {editingTask && (
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    setEditingTask(null)
+                    setTaskFields(emptyTask)
+                  }}
+                  className="text-slate-700 underline"
+                >
+                  Cancelar edición
+                </button>
+              )}
+            </div>
+          </form>
+        )}
+      </section>
+      {(error || message) && (
+        <p
+          role={error ? 'alert' : 'status'}
+          className={
+            error
+              ? 'rounded-md border border-red-300 bg-red-50 p-3 text-red-900'
+              : 'text-sm font-semibold text-green-800'
+          }
+        >
+          {error || message}
+        </p>
+      )}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+        <h3 className="mb-4 text-lg font-bold">Historial de modificaciones</h3>
+        {loading ? (
+          <p role="status">Cargando auditoría…</p>
+        ) : audit.length === 0 ? (
+          <p className="text-slate-600">Todavía no hay modificaciones de diagnóstico o trabajos.</p>
+        ) : (
+          <ol className="space-y-3">
+            {audit.map((entry) => (
+              <li key={entry.id} className="border-l-2 border-blue-200 pl-3">
+                <p className="font-semibold">
+                  {entry.tipo === 'DIAGNOSTICO' ? 'Diagnóstico' : 'Trabajo'} ·{' '}
+                  {entry.accion.toLowerCase()}
+                </p>
+                <p className="text-sm text-slate-600">
+                  {formatDate(entry.fechaCambio, true)} ·{' '}
+                  {entry.usuario.displayName || entry.usuario.userId}
+                </p>
+              </li>
+            ))}
+          </ol>
+        )}
+      </section>
+    </div>
   )
 }
 

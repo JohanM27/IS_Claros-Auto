@@ -12,6 +12,13 @@ const mocks = vi.hoisted(() => ({
   getOrder: vi.fn(),
   history: vi.fn(),
   updateStatus: vi.fn(),
+  getDiagnosis: vi.fn(),
+  saveDiagnosis: vi.fn(),
+  getTasks: vi.fn(),
+  createTask: vi.fn(),
+  updateTask: vi.fn(),
+  removeTask: vi.fn(),
+  recordAudit: vi.fn(),
   customerSearch: vi.fn(),
   appointments: vi.fn(),
   createOrder: vi.fn(),
@@ -36,6 +43,13 @@ vi.mock('../services/api', () => ({
   getAdminWorkOrder: mocks.getOrder,
   getWorkOrderStatusHistory: mocks.history,
   updateWorkOrderStatus: mocks.updateStatus,
+  getWorkOrderDiagnosis: mocks.getDiagnosis,
+  saveWorkOrderDiagnosis: mocks.saveDiagnosis,
+  getWorkOrderTasks: mocks.getTasks,
+  createWorkOrderTask: mocks.createTask,
+  updateWorkOrderTask: mocks.updateTask,
+  removeWorkOrderTask: mocks.removeTask,
+  getWorkOrderRecordAudit: mocks.recordAudit,
   searchWorkOrderCustomers: mocks.customerSearch,
   getWorkOrderAppointments: mocks.appointments,
   createWorkOrder: mocks.createOrder,
@@ -93,6 +107,13 @@ beforeEach(() => {
     cita: null,
   })
   mocks.history.mockResolvedValue([])
+  mocks.getDiagnosis.mockResolvedValue(null)
+  mocks.getTasks.mockResolvedValue({ trabajos: [], totalManoObra: '0.00', moneda: 'HNL' })
+  mocks.recordAudit.mockResolvedValue([])
+  mocks.saveDiagnosis.mockResolvedValue({})
+  mocks.createTask.mockResolvedValue({ trabajo: { id: 'task-1' }, duplicate: false })
+  mocks.updateTask.mockResolvedValue({})
+  mocks.removeTask.mockResolvedValue({})
   mocks.updateStatus.mockImplementation(async (_token, _id, input) => ({
     ...(await mocks.getOrder()),
     estado: input.estado,
@@ -183,6 +204,59 @@ describe('página de órdenes de trabajo', () => {
     expect(screen.getByText('Johan Moreno')).toBeTruthy()
     expect(screen.getByText('Revisar frenos')).toBeTruthy()
     expect(mocks.getOrder).toHaveBeenCalledWith('access-token', 'work-order-1')
+  })
+
+  it('separa el problema reportado del diagnóstico técnico y lo guarda', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/admin/ordenes/work-order-1']}>
+        <Routes>
+          <Route path="/admin/ordenes/:id" element={<WorkOrdersPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    expect(await screen.findByRole('heading', { name: 'Diagnóstico del vehículo' })).toBeTruthy()
+    expect(screen.getAllByText('Ruido al frenar').length).toBeGreaterThanOrEqual(2)
+    await user.type(screen.getByLabelText('Diagnóstico técnico *'), 'Pastillas desgastadas')
+    await user.type(screen.getByLabelText('Reparaciones recomendadas'), 'Reemplazar pastillas')
+    await user.click(screen.getByRole('button', { name: 'Guardar diagnóstico' }))
+
+    await screen.findByText('El diagnóstico quedó guardado con su trazabilidad.')
+    expect(mocks.saveDiagnosis).toHaveBeenCalledWith('access-token', 'work-order-1', {
+      diagnostico: 'Pastillas desgastadas',
+      causaIdentificada: null,
+      recomendaciones: 'Reemplazar pastillas',
+      observaciones: null,
+    })
+  })
+
+  it('registra trabajos desde el panel y vuelve a consultar el total del backend', async () => {
+    const user = userEvent.setup()
+    render(
+      <MemoryRouter initialEntries={['/admin/ordenes/work-order-1']}>
+        <Routes>
+          <Route path="/admin/ordenes/:id" element={<WorkOrdersPage />} />
+        </Routes>
+      </MemoryRouter>,
+    )
+    await screen.findByText('Todavía no hay trabajos registrados.')
+    await user.type(screen.getByLabelText('Nombre *'), 'Cambio de aceite')
+    await user.clear(screen.getByLabelText('Precio unitario (HNL) *'))
+    await user.type(screen.getByLabelText('Precio unitario (HNL) *'), '450.00')
+    await user.click(screen.getByRole('button', { name: 'Agregar trabajo' }))
+
+    await screen.findByText('El trabajo quedó registrado.')
+    expect(mocks.createTask).toHaveBeenCalledWith(
+      'access-token',
+      'work-order-1',
+      expect.objectContaining({
+        nombre: 'Cambio de aceite',
+        cantidad: '1',
+        precioUnitario: '450.00',
+        idempotencyKey: expect.any(String),
+      }),
+    )
+    expect(mocks.getTasks).toHaveBeenCalledTimes(2)
   })
 
   it('permite actualizar el estado y refresca el historial de auditoría', async () => {

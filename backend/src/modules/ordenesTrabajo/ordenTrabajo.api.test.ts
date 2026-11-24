@@ -106,6 +106,140 @@ const validOrder = {
 }
 
 describe('API administrativa de órdenes de trabajo', () => {
+  it('requiere autenticación para diagnóstico y trabajos', async () => {
+    const app = createApp()
+    const diagnosis = await request(app).get(`/api/admin/ordenes/${id}/diagnostico`)
+    const tasks = await request(app).get(`/api/admin/ordenes/${id}/trabajos`)
+    const createTask = await request(app).post(`/api/admin/ordenes/${id}/trabajos`).send({})
+
+    expect(diagnosis.status).toBe(401)
+    expect(tasks.status).toBe(401)
+    expect(createTask.status).toBe(401)
+  })
+
+  it('solo autoriza ADMINISTRADOR y RECEPCIONISTA a gestionar registros de una orden', async () => {
+    const mechanic = appFor('MECANICO')
+    const diagnosis = await request(mechanic.app).put(`/api/admin/ordenes/${id}/diagnostico`).send({
+      diagnostico: 'Revisión',
+    })
+    const task = await request(mechanic.app).post(`/api/admin/ordenes/${id}/trabajos`).send({
+      nombre: 'Cambio de aceite',
+      cantidad: '1',
+      precioUnitario: '0',
+      idempotencyKey: secondId,
+    })
+
+    expect(diagnosis.status).toBe(403)
+    expect(task.status).toBe(403)
+  })
+
+  it.each(['ADMINISTRADOR', 'RECEPCIONISTA'] as const)(
+    'registra el diagnóstico para %s usando la identidad de sesión',
+    async (role) => {
+      const saveDiagnosis = vi.fn().mockResolvedValue({
+        id: secondId,
+        diagnostico: 'Pastillas desgastadas',
+      })
+      const app = createApp({
+        authenticateEmployee: (request, _response, next) => {
+          request.employeeIdentity = { userId: id, email: null, displayName: 'Recepción', role }
+          next()
+        },
+        registrosOrdenTrabajo: { saveDiagnosis },
+      })
+      const response = await request(app).put(`/api/admin/ordenes/${id}/diagnostico`).send({
+        diagnostico: 'Pastillas desgastadas',
+        causaIdentificada: 'Desgaste',
+        recomendaciones: 'Reemplazar',
+        observaciones: '',
+      })
+
+      expect(response.status).toBe(200)
+      expect(saveDiagnosis).toHaveBeenCalledWith({
+        ordenTrabajoId: id,
+        diagnostico: 'Pastillas desgastadas',
+        causaIdentificada: 'Desgaste',
+        recomendaciones: 'Reemplazar',
+        observaciones: null,
+        usuarioId: id,
+      })
+    },
+  )
+
+  it('registra un trabajo con idempotencia y no acepta el usuario enviado por el cliente', async () => {
+    const addTask = vi.fn().mockResolvedValue({
+      trabajo: { id: secondId, nombre: 'Cambio de aceite' },
+      duplicate: false,
+    })
+    const app = createApp({
+      authenticateEmployee: (request, _response, next) => {
+        request.employeeIdentity = {
+          userId: id,
+          email: null,
+          displayName: 'Johan',
+          role: 'ADMINISTRADOR',
+        }
+        next()
+      },
+      registrosOrdenTrabajo: { addTask },
+    })
+    const response = await request(app).post(`/api/admin/ordenes/${id}/trabajos`).send({
+      nombre: 'Cambio de aceite',
+      descripcion: 'Aceite sintético',
+      cantidad: '1.50',
+      precioUnitario: '250.00',
+      mecanicoResponsable: 'Carlos',
+      idempotencyKey: secondId,
+    })
+
+    expect(response.status).toBe(201)
+    expect(response.body.data.trabajo.nombre).toBe('Cambio de aceite')
+    expect(addTask).toHaveBeenCalledWith(
+      id,
+      id,
+      expect.objectContaining({
+        nombre: 'Cambio de aceite',
+        cantidad: '1.50',
+        precioUnitario: '250.00',
+        idempotencyKey: secondId,
+        requestHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    )
+    const spoofed = await request(app).post(`/api/admin/ordenes/${id}/trabajos`).send({
+      nombre: 'Prueba',
+      cantidad: '1',
+      precioUnitario: '0',
+      idempotencyKey: id,
+      usuarioId: secondId,
+    })
+    expect(spoofed.status).toBe(400)
+    expect(addTask).toHaveBeenCalledOnce()
+  })
+
+  it('rechaza identificadores de actor del cliente y cantidades inválidas antes de persistir', async () => {
+    const { app } = appFor('RECEPCIONISTA')
+    const spoofedActor = await request(app).put(`/api/admin/ordenes/${id}/diagnostico`).send({
+      diagnostico: 'Prueba',
+      usuarioId: secondId,
+    })
+    const invalidQuantity = await request(app).post(`/api/admin/ordenes/${id}/trabajos`).send({
+      nombre: 'Trabajo',
+      cantidad: '0',
+      precioUnitario: '10.00',
+      idempotencyKey: secondId,
+    })
+    const negativePrice = await request(app).post(`/api/admin/ordenes/${id}/trabajos`).send({
+      nombre: 'Trabajo',
+      cantidad: '1',
+      precioUnitario: '-1',
+      idempotencyKey: secondId,
+    })
+
+    expect(spoofedActor.status).toBe(400)
+    expect(invalidQuantity.status).toBe(400)
+    expect(negativePrice.status).toBe(400)
+  })
+
   it('requiere una sesión autenticada', async () => {
     const response = await request(createApp()).get('/api/admin/ordenes')
 

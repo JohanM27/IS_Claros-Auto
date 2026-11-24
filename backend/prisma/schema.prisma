@@ -14,12 +14,18 @@ enum StaffRole {
 }
 
 model StaffProfile {
-  userId                 String                   @id @db.Uuid
+  userId                 String                    @id @db.Uuid
   role                   StaffRole
-  displayName            String?                  @db.VarChar(150)
-  createdAt              DateTime                 @default(now()) @db.Timestamptz(3)
-  updatedAt              DateTime                 @updatedAt @db.Timestamptz(3)
+  displayName            String?                   @db.VarChar(150)
+  createdAt              DateTime                  @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                  @updatedAt @db.Timestamptz(3)
   workOrderStatusChanges WorkOrderStatusHistory[]
+  workOrderRecordChanges WorkOrderRecordHistory[]
+  diagnosticosCreados    DiagnosticoOrden[]        @relation("DiagnosisCreatedBy")
+  diagnosticosEditados   DiagnosticoOrden[]        @relation("DiagnosisUpdatedBy")
+  diagnosticChanges      DiagnosticoOrdenHistory[]
+  trabajosCreados        TrabajoRealizado[]        @relation("WorkTaskCreatedBy")
+  trabajosEditados       TrabajoRealizado[]        @relation("WorkTaskUpdatedBy")
 }
 
 model Service {
@@ -119,6 +125,9 @@ model WorkOrder {
   vehiculo            Vehicle                  @relation(fields: [vehiculoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   cita                Appointment?             @relation(fields: [citaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   historialEstados    WorkOrderStatusHistory[]
+  diagnostico         DiagnosticoOrden?
+  trabajos            TrabajoRealizado[]
+  historialRegistros  WorkOrderRecordHistory[]
 
   @@index([clienteId, fechaIngreso])
   @@index([vehiculoId])
@@ -138,4 +147,92 @@ model WorkOrderStatusHistory {
 
   @@index([ordenTrabajoId, fechaCambio])
   @@index([usuarioId])
+}
+
+enum WorkOrderRecordType {
+  DIAGNOSTICO
+  TRABAJO
+}
+
+enum WorkOrderRecordAction {
+  CREADO
+  ACTUALIZADO
+  RETIRADO
+}
+
+model DiagnosticoOrden {
+  id                     String                    @id @default(uuid()) @db.Uuid
+  ordenTrabajoId         String                    @unique @db.Uuid
+  diagnostico            String                    @db.VarChar(4000)
+  causaIdentificada      String?                   @db.VarChar(2000)
+  recomendaciones        String?                   @db.VarChar(2000)
+  observaciones          String?                   @db.VarChar(2000)
+  usuarioRegistroId      String                    @db.Uuid
+  usuarioActualizacionId String                    @db.Uuid
+  fechaDiagnostico       DateTime                  @default(now()) @db.Timestamptz(3)
+  fechaCreacion          DateTime                  @default(now()) @db.Timestamptz(3)
+  fechaActualizacion     DateTime                  @updatedAt @db.Timestamptz(3)
+  ordenTrabajo           WorkOrder                 @relation(fields: [ordenTrabajoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  usuarioRegistro        StaffProfile              @relation("DiagnosisCreatedBy", fields: [usuarioRegistroId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+  usuarioActualizacion   StaffProfile              @relation("DiagnosisUpdatedBy", fields: [usuarioActualizacionId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+  historial              DiagnosticoOrdenHistory[]
+
+  @@index([usuarioRegistroId])
+  @@index([usuarioActualizacionId])
+}
+
+model DiagnosticoOrdenHistory {
+  id                 String           @id @default(uuid()) @db.Uuid
+  diagnosticoOrdenId String           @db.Uuid
+  diagnostico        String           @db.VarChar(4000)
+  causaIdentificada  String?          @db.VarChar(2000)
+  recomendaciones    String?          @db.VarChar(2000)
+  observaciones      String?          @db.VarChar(2000)
+  usuarioId          String           @db.Uuid
+  fechaCambio        DateTime         @default(now()) @db.Timestamptz(3)
+  diagnosticoOrden   DiagnosticoOrden @relation(fields: [diagnosticoOrdenId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  usuario            StaffProfile     @relation(fields: [usuarioId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([diagnosticoOrdenId, fechaCambio])
+}
+
+model TrabajoRealizado {
+  id                     String       @id @default(uuid()) @db.Uuid
+  ordenTrabajoId         String       @db.Uuid
+  nombre                 String       @db.VarChar(150)
+  descripcion            String?      @db.VarChar(2000)
+  cantidad               Decimal      @db.Decimal(10, 2)
+  precioUnitario         Decimal      @db.Decimal(12, 2)
+  mecanicoResponsable    String?      @db.VarChar(150)
+  usuarioRegistroId      String       @db.Uuid
+  usuarioActualizacionId String       @db.Uuid
+  idempotencyKey         String       @unique @db.Uuid
+  requestHash            String       @db.Char(64)
+  activo                 Boolean      @default(true)
+  fechaRetiro            DateTime?    @db.Timestamptz(3)
+  fechaCreacion          DateTime     @default(now()) @db.Timestamptz(3)
+  fechaActualizacion     DateTime     @updatedAt @db.Timestamptz(3)
+  ordenTrabajo           WorkOrder    @relation(fields: [ordenTrabajoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  usuarioRegistro        StaffProfile @relation("WorkTaskCreatedBy", fields: [usuarioRegistroId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+  usuarioActualizacion   StaffProfile @relation("WorkTaskUpdatedBy", fields: [usuarioActualizacionId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([ordenTrabajoId, activo, fechaCreacion])
+  @@index([usuarioRegistroId])
+  @@index([usuarioActualizacionId])
+}
+
+model WorkOrderRecordHistory {
+  id             String                @id @default(uuid()) @db.Uuid
+  ordenTrabajoId String                @db.Uuid
+  tipo           WorkOrderRecordType
+  accion         WorkOrderRecordAction
+  registroId     String                @db.Uuid
+  usuarioId      String                @db.Uuid
+  snapshot       Json
+  fechaCambio    DateTime              @default(now()) @db.Timestamptz(3)
+  ordenTrabajo   WorkOrder             @relation(fields: [ordenTrabajoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  usuario        StaffProfile          @relation(fields: [usuarioId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([ordenTrabajoId, fechaCambio])
+  @@index([tipo, registroId])
 }

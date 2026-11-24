@@ -12,6 +12,7 @@ import { authenticateEmployee } from './modules/auth/auth.middleware.js'
 import type { RequestHandler } from 'express'
 import { createAdminRouter } from './modules/admin/admin.routes.js'
 import { crearRutasOrdenesTrabajo } from './modules/ordenesTrabajo/ordenTrabajo.routes.js'
+import { crearRutasRegistrosOrdenTrabajo } from './modules/ordenesTrabajo/ordenTrabajo.registros.routes.js'
 
 export type ApiDependencies = {
   listarServicios?: Parameters<typeof crearRutasServicios>[0]
@@ -20,6 +21,7 @@ export type ApiDependencies = {
   authenticateEmployee?: RequestHandler
   admin?: Parameters<typeof createAdminRouter>[1]
   ordenesTrabajo?: Parameters<typeof crearRutasOrdenesTrabajo>[1]
+  registrosOrdenTrabajo?: Parameters<typeof crearRutasRegistrosOrdenTrabajo>[1]
 }
 
 export function createApp(dependencies: ApiDependencies = {}) {
@@ -40,7 +42,7 @@ export function createApp(dependencies: ApiDependencies = {}) {
           ),
         )
       },
-      methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
       allowedHeaders: ['Content-Type', 'Authorization'],
       maxAge: 600,
     }),
@@ -60,6 +62,13 @@ export function createApp(dependencies: ApiDependencies = {}) {
     crearRutasOrdenesTrabajo(
       dependencies.authenticateEmployee ?? authenticateEmployee,
       dependencies.ordenesTrabajo,
+    ),
+  )
+  app.use(
+    '/api/admin/ordenes',
+    crearRutasRegistrosOrdenTrabajo(
+      dependencies.authenticateEmployee ?? authenticateEmployee,
+      dependencies.registrosOrdenTrabajo,
     ),
   )
   app.use('/api/servicios', crearRutasServicios(dependencies.listarServicios))
