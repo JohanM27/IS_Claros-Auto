@@ -1,6 +1,8 @@
 import { prisma } from '../../config/database.js'
 import { Prisma } from '../../generated/prisma/client.js'
+import type { WorkOrderStatus } from '../../generated/prisma/client.js'
 import { HttpError } from '../../utils/httpError.js'
+import { validarTransicionEstadoOrden } from './ordenTrabajo.estado.js'
 import { validarCitaDisponible, validarVehiculoDelCliente } from './ordenTrabajo.validation.js'
 import { formatearNumeroOrden } from './ordenTrabajo.number.js'
 
@@ -105,6 +107,114 @@ export function consultarOrdenTrabajo(id: string) {
         },
       },
     },
+  })
+}
+
+export async function consultarHistorialOrdenTrabajo(ordenTrabajoId: string) {
+  const order = await prisma.workOrder.findUnique({
+    where: { id: ordenTrabajoId },
+    select: { id: true },
+  })
+  if (!order) return null
+
+  return prisma.workOrderStatusHistory.findMany({
+    where: { ordenTrabajoId },
+    orderBy: [{ fechaCambio: 'desc' }, { id: 'desc' }],
+    select: {
+      id: true,
+      estadoAnterior: true,
+      estadoNuevo: true,
+      observaciones: true,
+      fechaCambio: true,
+      usuario: { select: { userId: true, displayName: true } },
+    },
+  })
+}
+
+export type CambioEstadoOrdenInput = {
+  ordenTrabajoId: string
+  estadoActualEsperado: WorkOrderStatus
+  estadoNuevo: WorkOrderStatus
+  observaciones: string | null
+  usuarioId: string
+}
+
+type WorkOrderTransactionRunner = <T>(
+  operation: (transaction: Prisma.TransactionClient) => Promise<T>,
+) => Promise<T>
+
+export async function cambiarEstadoOrdenTrabajo(
+  input: CambioEstadoOrdenInput,
+  transactionRunner: WorkOrderTransactionRunner = (operation) => prisma.$transaction(operation),
+) {
+  return transactionRunner(async (transaction) => {
+    const order = await transaction.workOrder.findUnique({
+      where: { id: input.ordenTrabajoId },
+      select: { estado: true },
+    })
+    if (!order) {
+      throw new HttpError(404, 'WORK_ORDER_NOT_FOUND', 'No se encontró la orden de trabajo.')
+    }
+    if (order.estado !== input.estadoActualEsperado) {
+      throw new HttpError(
+        409,
+        'WORK_ORDER_CHANGED_CONCURRENTLY',
+        'La orden cambió desde que la consultaste. Actualiza la página e inténtalo de nuevo.',
+      )
+    }
+
+    validarTransicionEstadoOrden(order.estado, input.estadoNuevo, input.observaciones)
+
+    const update = await transaction.workOrder.updateMany({
+      where: { id: input.ordenTrabajoId, estado: input.estadoActualEsperado },
+      data: { estado: input.estadoNuevo },
+    })
+    if (update.count !== 1) {
+      throw new HttpError(
+        409,
+        'WORK_ORDER_CHANGED_CONCURRENTLY',
+        'La orden cambió desde que la consultaste. Actualiza la página e inténtalo de nuevo.',
+      )
+    }
+
+    await transaction.workOrderStatusHistory.create({
+      data: {
+        ordenTrabajoId: input.ordenTrabajoId,
+        estadoAnterior: order.estado,
+        estadoNuevo: input.estadoNuevo,
+        observaciones: input.observaciones,
+        usuarioId: input.usuarioId,
+      },
+    })
+
+    return transaction.workOrder.findUniqueOrThrow({
+      where: { id: input.ordenTrabajoId },
+      select: {
+        id: true,
+        numeroOrden: true,
+        clienteId: true,
+        vehiculoId: true,
+        citaId: true,
+        descripcionProblema: true,
+        observaciones: true,
+        mecanicoResponsable: true,
+        kilometraje: true,
+        estado: true,
+        fechaIngreso: true,
+        fechaCreacion: true,
+        fechaActualizacion: true,
+        cliente: { select: { name: true, phone: true, email: true } },
+        vehiculo: { select: { make: true, model: true, year: true, plate: true } },
+        cita: {
+          select: {
+            id: true,
+            requestedAt: true,
+            status: true,
+            service: { select: { name: true } },
+          },
+        },
+      },
+    })
   })
 }
 

@@ -14,11 +14,12 @@ enum StaffRole {
 }
 
 model StaffProfile {
-  userId      String    @id @db.Uuid
-  role        StaffRole
-  displayName String?   @db.VarChar(150)
-  createdAt   DateTime  @default(now()) @db.Timestamptz(3)
-  updatedAt   DateTime  @updatedAt @db.Timestamptz(3)
+  userId                 String                   @id @db.Uuid
+  role                   StaffRole
+  displayName            String?                  @db.VarChar(150)
+  createdAt              DateTime                 @default(now()) @db.Timestamptz(3)
+  updatedAt              DateTime                 @updatedAt @db.Timestamptz(3)
+  workOrderStatusChanges WorkOrderStatusHistory[]
 }
 
 model Service {
@@ -99,26 +100,42 @@ model Appointment {
 }
 
 model WorkOrder {
-  id                  String          @id @default(uuid()) @db.Uuid
-  numeroOrden         String          @unique @db.VarChar(30)
-  clienteId           String          @db.Uuid
-  vehiculoId          String          @db.Uuid
-  citaId              String?         @unique @db.Uuid
-  descripcionProblema String          @db.VarChar(2000)
-  observaciones       String?         @db.VarChar(2000)
-  mecanicoResponsable String?         @db.VarChar(150)
+  id                  String                   @id @default(uuid()) @db.Uuid
+  numeroOrden         String                   @unique @db.VarChar(30)
+  clienteId           String                   @db.Uuid
+  vehiculoId          String                   @db.Uuid
+  citaId              String?                  @unique @db.Uuid
+  descripcionProblema String                   @db.VarChar(2000)
+  observaciones       String?                  @db.VarChar(2000)
+  mecanicoResponsable String?                  @db.VarChar(150)
   kilometraje         Int?
-  idempotencyKey      String          @unique @db.Uuid
-  requestHash         String          @db.Char(64)
-  estado              WorkOrderStatus @default(ABIERTA)
-  fechaIngreso        DateTime        @default(now()) @db.Timestamptz(3)
-  fechaCreacion       DateTime        @default(now()) @db.Timestamptz(3)
-  fechaActualizacion  DateTime        @default(now()) @updatedAt @db.Timestamptz(3)
-  cliente             Customer        @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  vehiculo            Vehicle         @relation(fields: [vehiculoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  cita                Appointment?    @relation(fields: [citaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  idempotencyKey      String                   @unique @db.Uuid
+  requestHash         String                   @db.Char(64)
+  estado              WorkOrderStatus          @default(ABIERTA)
+  fechaIngreso        DateTime                 @default(now()) @db.Timestamptz(3)
+  fechaCreacion       DateTime                 @default(now()) @db.Timestamptz(3)
+  fechaActualizacion  DateTime                 @default(now()) @updatedAt @db.Timestamptz(3)
+  cliente             Customer                 @relation(fields: [clienteId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  vehiculo            Vehicle                  @relation(fields: [vehiculoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  cita                Appointment?             @relation(fields: [citaId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  historialEstados    WorkOrderStatusHistory[]
 
   @@index([clienteId, fechaIngreso])
   @@index([vehiculoId])
   @@index([estado, fechaIngreso])
+}
+
+model WorkOrderStatusHistory {
+  id             String          @id @default(uuid()) @db.Uuid
+  ordenTrabajoId String          @db.Uuid
+  estadoAnterior WorkOrderStatus
+  estadoNuevo    WorkOrderStatus
+  observaciones  String?         @db.VarChar(2000)
+  usuarioId      String          @db.Uuid
+  fechaCambio    DateTime        @default(now()) @db.Timestamptz(3)
+  ordenTrabajo   WorkOrder       @relation(fields: [ordenTrabajoId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  usuario        StaffProfile    @relation(fields: [usuarioId], references: [userId], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([ordenTrabajoId, fechaCambio])
+  @@index([usuarioId])
 }

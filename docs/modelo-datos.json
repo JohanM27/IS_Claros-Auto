@@ -35,7 +35,14 @@
         },
         { "name": "updatedAt", "type": "DateTime", "databaseType": "TIMESTAMPTZ(3)" }
       ],
-      "relations": [],
+      "relations": [
+        {
+          "field": "workOrderStatusChanges",
+          "target": "WorkOrderStatusHistory",
+          "cardinality": "one-to-many",
+          "foreignKey": "WorkOrderStatusHistory.usuarioId"
+        }
+      ],
       "indexes": []
     },
     {
@@ -351,9 +358,81 @@
           "optional": true,
           "onDelete": "SET NULL",
           "onUpdate": "CASCADE"
+        },
+        {
+          "field": "historialEstados",
+          "target": "WorkOrderStatusHistory",
+          "cardinality": "one-to-many",
+          "foreignKey": "WorkOrderStatusHistory.ordenTrabajoId"
         }
       ],
       "indexes": [["clienteId", "fechaIngreso"], ["vehiculoId"], ["estado", "fechaIngreso"]]
+    },
+    {
+      "name": "WorkOrderStatusHistory",
+      "table": "WorkOrderStatusHistory",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String",
+          "databaseType": "UUID",
+          "primaryKey": true,
+          "default": "uuid()"
+        },
+        {
+          "name": "ordenTrabajoId",
+          "type": "String",
+          "databaseType": "UUID",
+          "foreignKey": "WorkOrder.id"
+        },
+        {
+          "name": "estadoAnterior",
+          "type": "WorkOrderStatus",
+          "databaseType": "WorkOrderStatus"
+        },
+        {
+          "name": "estadoNuevo",
+          "type": "WorkOrderStatus",
+          "databaseType": "WorkOrderStatus"
+        },
+        {
+          "name": "observaciones",
+          "type": "String",
+          "databaseType": "VARCHAR(2000)",
+          "optional": true
+        },
+        {
+          "name": "usuarioId",
+          "type": "String",
+          "databaseType": "UUID",
+          "foreignKey": "StaffProfile.userId"
+        },
+        {
+          "name": "fechaCambio",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)",
+          "default": "now()"
+        }
+      ],
+      "relations": [
+        {
+          "field": "ordenTrabajo",
+          "target": "WorkOrder",
+          "cardinality": "many-to-one",
+          "foreignKey": "ordenTrabajoId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        },
+        {
+          "field": "usuario",
+          "target": "StaffProfile",
+          "cardinality": "many-to-one",
+          "foreignKey": "usuarioId",
+          "onDelete": "RESTRICT",
+          "onUpdate": "CASCADE"
+        }
+      ],
+      "indexes": [["ordenTrabajoId", "fechaCambio"], ["usuarioId"]]
     }
   ]
 }

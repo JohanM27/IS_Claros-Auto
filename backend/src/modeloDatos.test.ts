@@ -6,6 +6,13 @@ const migration = readFileSync(
   new URL('../prisma/migrations/20261116000000_modelo_taller/migration.sql', import.meta.url),
   'utf8',
 )
+const statusHistoryMigration = readFileSync(
+  new URL(
+    '../prisma/migrations/20261122100000_historial_estados_orden/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 const modelData = JSON.parse(
   readFileSync(new URL('../../docs/modelo-datos.json', import.meta.url), 'utf8'),
 ) as {
@@ -54,5 +61,12 @@ describe('modelo Prisma documentado', () => {
     expect(migration).toContain('Appointment_vehicleId_fkey')
     expect(migration).toContain('Appointment_serviceId_fkey')
     expect(migration).toContain('ON DELETE RESTRICT ON UPDATE CASCADE')
+  })
+
+  it('crea historial de estado con referencias restrictivas a orden y empleado', () => {
+    expect(statusHistoryMigration).toContain('CREATE TABLE "WorkOrderStatusHistory"')
+    expect(statusHistoryMigration).toContain('WorkOrderStatusHistory_ordenTrabajoId_fkey')
+    expect(statusHistoryMigration).toContain('WorkOrderStatusHistory_usuarioId_fkey')
+    expect(statusHistoryMigration.match(/ON DELETE RESTRICT ON UPDATE CASCADE/g)).toHaveLength(2)
   })
 })
