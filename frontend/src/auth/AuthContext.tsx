@@ -1,11 +1,21 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import { ApiError, getEmployeeIdentity } from '../services/api'
+import { ApiError, getEmployeeIdentity, type EmployeeIdentity } from '../services/api'
 import { supabase } from './supabaseClient'
 
 type AuthContextValue = {
   session: Session | null
   user: User | null
+  employee: EmployeeIdentity | null
+  employeeLoading: boolean
   loading: boolean
   isConfigured: boolean
   signIn: (email: string, password: string) => Promise<void>
@@ -17,6 +27,32 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(Boolean(supabase))
+  const [employee, setEmployee] = useState<EmployeeIdentity | null>(null)
+  const [employeeLoading, setEmployeeLoading] = useState(Boolean(supabase))
+  const identityCache = useRef(new Map<string, EmployeeIdentity>())
+  const identityRequests = useRef(new Map<string, Promise<EmployeeIdentity>>())
+
+  const loadEmployeeIdentity = useCallback((userId: string, accessToken: string) => {
+    const cachedIdentity = identityCache.current.get(userId)
+    if (cachedIdentity) return Promise.resolve(cachedIdentity)
+
+    const pendingRequest = identityRequests.current.get(userId)
+    if (pendingRequest) return pendingRequest
+
+    let request: Promise<EmployeeIdentity>
+    request = getEmployeeIdentity(accessToken)
+      .then((identity) => {
+        identityCache.current.set(userId, identity)
+        return identity
+      })
+      .finally(() => {
+        if (identityRequests.current.get(userId) === request) {
+          identityRequests.current.delete(userId)
+        }
+      })
+    identityRequests.current.set(userId, request)
+    return request
+  }, [])
 
   useEffect(() => {
     if (!supabase) return
@@ -26,6 +62,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (active) {
         setSession(nextSession)
         setLoading(false)
+        if (!nextSession) {
+          identityCache.current.clear()
+          identityRequests.current.clear()
+          setEmployee(null)
+          setEmployeeLoading(false)
+        }
       }
     })
 
@@ -46,6 +88,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data.subscription.unsubscribe()
     }
   }, [])
+
+  useEffect(() => {
+    if (!session) {
+      setEmployee(null)
+      setEmployeeLoading(false)
+      return
+    }
+
+    let active = true
+    const userId = session.user.id
+    const cachedIdentity = identityCache.current.get(userId)
+    if (cachedIdentity) {
+      setEmployee(cachedIdentity)
+      setEmployeeLoading(false)
+    } else {
+      setEmployee(null)
+      setEmployeeLoading(true)
+      void loadEmployeeIdentity(userId, session.access_token)
+        .then((identity) => {
+          if (active) setEmployee(identity)
+        })
+        .catch(() => {
+          if (active) setEmployee(null)
+        })
+        .finally(() => {
+          if (active) setEmployeeLoading(false)
+        })
+    }
+
+    return () => {
+      active = false
+    }
+  }, [session?.access_token, session?.user.id, loadEmployeeIdentity])
 
   async function signIn(email: string, password: string) {
     if (!supabase) {
@@ -68,10 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const employee = await getEmployeeIdentity(accessToken)
-      if (employee.role !== 'ADMINISTRADOR' && employee.role !== 'RECEPCIONISTA') {
+      const identity = await loadEmployeeIdentity(data.user.id, accessToken)
+      if (identity.role !== 'ADMINISTRADOR' && identity.role !== 'RECEPCIONISTA') {
         throw new ApiError('Rol sin acceso al sistema.', 403)
       }
+      setEmployee(identity)
     } catch (cause) {
       await supabase.auth.signOut()
       if (cause instanceof ApiError && cause.status === 403) {
@@ -87,6 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return
     const { error } = await supabase.auth.signOut()
     if (error) throw new Error('No se pudo cerrar la sesión. Intenta de nuevo.')
+    identityCache.current.clear()
+    identityRequests.current.clear()
+    setEmployee(null)
+    setEmployeeLoading(false)
   }
 
   return (
@@ -94,6 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         session,
         user: session?.user ?? null,
+        employee,
+        employeeLoading,
         loading,
         isConfigured: Boolean(supabase),
         signIn,

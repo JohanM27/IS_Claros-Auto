@@ -14,6 +14,7 @@ const pool = new Pool({
   connectionTimeoutMillis: 15_000,
   keepAlive: true,
   max: 10,
+  min: 1,
 })
 const adapter = new PrismaPg(pool)
 
@@ -26,4 +27,8 @@ export const prisma =
 
 if (process.env.NODE_ENV !== 'production') {
   prismaGlobal.clarosAutoPrisma = prisma
+}
+
+export async function warmDatabaseConnection() {
+  await prisma.$queryRaw`SELECT 1`
 }

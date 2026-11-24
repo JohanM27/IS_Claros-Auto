@@ -66,7 +66,14 @@ export function createAdminRouter(
   const update = dependencies.update ?? updateAppointmentStatus
   router.get('/citas', authenticate, requireRoles(...roles), async (_request, response, next) => {
     try {
-      response.set('Cache-Control', 'no-store').json({ data: await list() })
+      const queryStartedAt = performance.now()
+      const appointments = await list()
+      if (process.env.NODE_ENV === 'development') {
+        console.info(
+          `[perf] GET /admin/citas query=${Math.round(performance.now() - queryStartedAt)}ms rows=${appointments.length}`,
+        )
+      }
+      response.set('Cache-Control', 'no-store').json({ data: appointments })
     } catch (error) {
       next(error)
     }

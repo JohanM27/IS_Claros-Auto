@@ -59,7 +59,7 @@ afterEach(cleanup)
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.signInWithPassword.mockResolvedValue({
-    data: { session: { access_token: 'access-token' } },
+    data: { user: { id: 'employee-1' }, session: { access_token: 'access-token' } },
     error: null,
   })
   mocks.signOut.mockResolvedValue({ error: null })

@@ -5,19 +5,31 @@ import { AdminNavigation } from '../components/AdminNavigation'
 import {
   ApiError,
   getAdminAppointments,
-  getEmployeeIdentity,
   setAppointmentStatus,
   type AdminAppointment,
-  type EmployeeIdentity,
 } from '../services/api'
 import { PageMetadata } from '../components/PageMetadata'
 import { supabase } from '../auth/supabaseClient'
 
+const appointmentCache = new Map<string, AdminAppointment[]>()
+
+function saveAppointmentsToCache(employeeId: string, appointments: AdminAppointment[]) {
+  appointmentCache.delete(employeeId)
+  appointmentCache.set(employeeId, appointments)
+  if (appointmentCache.size > 10) {
+    const oldestEmployeeId = appointmentCache.keys().next().value
+    if (oldestEmployeeId) appointmentCache.delete(oldestEmployeeId)
+  }
+}
+
 export function AdminPage() {
-  const { session, loading: authLoading, signOut } = useAuth()
-  const [employee, setEmployee] = useState<EmployeeIdentity | null>(null)
-  const [appointments, setAppointments] = useState<AdminAppointment[]>([])
-  const [loading, setLoading] = useState(true)
+  const { session, employee, employeeLoading, loading: authLoading, signOut } = useAuth()
+  const [appointments, setAppointments] = useState<AdminAppointment[]>(() =>
+    employee ? appointmentCache.get(employee.id) ?? [] : [],
+  )
+  const [loading, setLoading] = useState(
+    () => !employee || !appointmentCache.has(employee.id),
+  )
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
@@ -29,51 +41,59 @@ export function AdminPage() {
     if (!session) return
     setRefreshing(true)
     try {
-      setAppointments(await getAdminAppointments(session.access_token))
+      const result = await getAdminAppointments(session.access_token)
+      if (employee) saveAppointmentsToCache(employee.id, result)
+      setAppointments(result)
       setError('')
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudieron actualizar las citas.')
     } finally {
       setRefreshing(false)
     }
-  }, [session])
+  }, [session, employee])
 
   useEffect(() => {
-    if (!session) return
+    if (!session || employeeLoading) return
     let active = true
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let channel: ReturnType<NonNullable<typeof supabase>['channel']> | null = null
-    void Promise.all([
-      getEmployeeIdentity(session.access_token),
-      getAdminAppointments(session.access_token),
-    ])
-      .then(([identity, appointments]) => {
+    const cachedAppointments = employee ? appointmentCache.get(employee.id) : undefined
+    if (cachedAppointments) {
+      setAppointments(cachedAppointments)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+    void (async () => {
+      try {
         if (!active) return
-        setError('')
-        setEmployee(identity)
-        if (identity.role === 'MECANICO')
+        if (!employee) throw new Error('No se pudo verificar la cuenta del empleado.')
+        if (employee.role === 'MECANICO')
           throw new ApiError('Tu cuenta no tiene permiso para el panel de recepción.', 403)
-        setAppointments(appointments)
-        if (!supabase) return
 
-        channel = supabase
-          .channel('admin-appointments', { config: { private: true } })
-          .on('broadcast', { event: 'appointment_changed' }, () => {
-            if (refreshTimer) clearTimeout(refreshTimer)
-            refreshTimer = setTimeout(() => void refreshAppointments(), 200)
-          })
-          .subscribe((status) => {
-            if (!active) return
-            if (status === 'SUBSCRIBED') {
-              setRealtimeStatus('live')
-              // Close the small window between the first fetch and the channel joining.
-              void refreshAppointments()
-            } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-              setRealtimeStatus('offline')
-            }
-          })
-      })
-      .catch((cause: unknown) => {
+        if (supabase) {
+          channel = supabase
+            .channel('admin-appointments', { config: { private: true } })
+            .on('broadcast', { event: 'appointment_changed' }, () => {
+              if (refreshTimer) clearTimeout(refreshTimer)
+              refreshTimer = setTimeout(() => void refreshAppointments(), 200)
+            })
+            .subscribe((status) => {
+              if (!active) return
+              if (status === 'SUBSCRIBED') {
+                setRealtimeStatus('live')
+              } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                setRealtimeStatus('offline')
+              }
+            })
+        }
+
+        const appointments = await getAdminAppointments(session.access_token)
+        if (!active) return
+        saveAppointmentsToCache(employee.id, appointments)
+        setError('')
+        setAppointments(appointments)
+      } catch (cause) {
         if (!active) return
         setRealtimeStatus('offline')
         setError(
@@ -83,18 +103,18 @@ export function AdminPage() {
               ? cause.message
               : 'No se pudieron cargar las citas.',
         )
-      })
-      .finally(() => {
+      } finally {
         if (active) {
           setLoading(false)
         }
-      })
+      }
+    })()
     return () => {
       active = false
       if (refreshTimer) clearTimeout(refreshTimer)
       if (channel && supabase) void supabase.removeChannel(channel)
     }
-  }, [session, refreshAppointments])
+  }, [session, employee, employeeLoading, refreshAppointments])
 
   if (authLoading) return <main className="p-10 text-center">Verificando sesión…</main>
   if (!session) return <Navigate to="/login" replace state={{ from: { pathname: '/admin' } }} />
@@ -105,11 +125,13 @@ export function AdminPage() {
     setError('')
     try {
       const updated = await setAppointmentStatus(session.access_token, appointment.id, status)
-      setAppointments((current) =>
-        current.map((item) =>
+      setAppointments((current) => {
+        const next = current.map((item) =>
           item.id === updated.id ? { ...item, status: updated.status } : item,
-        ),
-      )
+        )
+        if (employee) saveAppointmentsToCache(employee.id, next)
+        return next
+      })
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo actualizar la cita.')
     } finally {
@@ -128,7 +150,10 @@ export function AdminPage() {
         <AdminNavigation
           title="Panel de citas"
           employee={employee}
-          onSignOut={() => void signOut()}
+          onSignOut={() => {
+            if (employee) appointmentCache.delete(employee.id)
+            void signOut()
+          }}
         />
         <div className="mb-5 flex flex-wrap items-center justify-between gap-3 text-sm">
           <p className={realtimeStatus === 'live' ? 'text-green-800' : 'text-slate-600'}>

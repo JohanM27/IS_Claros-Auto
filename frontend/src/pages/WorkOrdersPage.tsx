@@ -4,11 +4,9 @@ import { useAuth } from '../auth/AuthContext'
 import { AdminNavigation } from '../components/AdminNavigation'
 import { PageMetadata } from '../components/PageMetadata'
 import {
-  ApiError,
   getAdminWorkOrder,
   getAdminWorkOrders,
   getWorkOrderStatusHistory,
-  getEmployeeIdentity,
   searchWorkOrderCustomers,
   getWorkOrderAppointments,
   createWorkOrder,
@@ -23,7 +21,6 @@ import {
   type AdminWorkOrder,
   type AdminWorkOrderDetails,
   type AdminWorkOrderListItem,
-  type EmployeeIdentity,
   type WorkOrderStatus,
   type WorkOrderStatusHistoryEntry,
   type WorkOrderCustomer,
@@ -34,11 +31,49 @@ import {
   type WorkTaskInput,
 } from '../services/api'
 
+type WorkOrderListCacheEntry = {
+  data: AdminWorkOrderListItem[]
+  pagination: { total: number; totalPages: number }
+}
+
+type WorkOrderListFilters = {
+  q: string
+  estado: WorkOrderStatus | ''
+  fechaDesde: string
+  fechaHasta: string
+  mecanico: string
+  page: number
+}
+
+const workOrderListCache = new Map<string, WorkOrderListCacheEntry>()
+
+function workOrderListCacheKey(userId: string, filters: WorkOrderListFilters) {
+  return `${userId}:${JSON.stringify(filters)}`
+}
+
+function saveWorkOrderListToCache(key: string, result: WorkOrderListCacheEntry) {
+  workOrderListCache.delete(key)
+  workOrderListCache.set(key, result)
+  if (workOrderListCache.size > 30) {
+    const oldestKey = workOrderListCache.keys().next().value
+    if (oldestKey) workOrderListCache.delete(oldestKey)
+  }
+}
+
+function clearWorkOrderCacheForUser(userId: string) {
+  for (const key of workOrderListCache.keys()) {
+    if (key.startsWith(`${userId}:`)) workOrderListCache.delete(key)
+  }
+}
+
 export function WorkOrdersPage() {
-  const { session, loading: authLoading, signOut } = useAuth()
-  const [employee, setEmployee] = useState<EmployeeIdentity | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState('')
+  const {
+    session,
+    employee,
+    employeeLoading,
+    loading: authLoading,
+    signOut,
+  } = useAuth()
   const location = useLocation()
   const { id: orderId } = useParams()
   const isCreatePage = location.pathname.endsWith('/nueva')
@@ -47,35 +82,6 @@ export function WorkOrdersPage() {
     : orderId
       ? 'Detalle de orden de trabajo'
       : 'Órdenes de trabajo'
-
-  useEffect(() => {
-    if (!session) return
-    let active = true
-    void getEmployeeIdentity(session.access_token)
-      .then(async (identity) => {
-        if (!active) return
-        if (identity.role !== 'ADMINISTRADOR' && identity.role !== 'RECEPCIONISTA') {
-          throw new ApiError('Esta cuenta no tiene acceso al sistema administrativo.', 403)
-        }
-        setEmployee(identity)
-      })
-      .catch((cause: unknown) => {
-        if (!active) return
-        setError(
-          cause instanceof ApiError && cause.status === 403
-            ? 'Esta cuenta no tiene un rol autorizado para gestionar órdenes de trabajo.'
-            : cause instanceof Error
-              ? cause.message
-              : 'No se pudieron cargar las órdenes de trabajo.',
-        )
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [session])
 
   if (authLoading) return <main className="p-10 text-center">Verificando sesión…</main>
   if (!session) {
@@ -90,12 +96,19 @@ export function WorkOrdersPage() {
         indexable={false}
       />
       <div className="mx-auto max-w-6xl">
-        <AdminNavigation title={title} employee={employee} onSignOut={() => void signOut()} />
-        {loading ? (
+        <AdminNavigation
+          title={title}
+          employee={employee}
+          onSignOut={() => {
+            if (employee) clearWorkOrderCacheForUser(employee.id)
+            void signOut()
+          }}
+        />
+        {employeeLoading ? (
           <p role="status">Verificando permisos…</p>
-        ) : error ? (
+        ) : !employee || employee.role === 'MECANICO' ? (
           <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
-            {error}
+            Esta cuenta no tiene un rol autorizado para gestionar órdenes de trabajo.
           </p>
         ) : employee && session ? (
           isCreatePage ? (
@@ -103,7 +116,7 @@ export function WorkOrdersPage() {
           ) : orderId ? (
             <WorkOrderDetail accessToken={session.access_token} id={orderId} />
           ) : (
-            <WorkOrdersList accessToken={session.access_token} />
+            <WorkOrdersList accessToken={session.access_token} userId={employee.id} />
           )
         ) : null}
       </div>
@@ -111,8 +124,17 @@ export function WorkOrdersPage() {
   )
 }
 
-function WorkOrdersList({ accessToken }: { accessToken: string }) {
-  const [orders, setOrders] = useState<AdminWorkOrderListItem[]>([])
+function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: string }) {
+  const defaultCacheKey = workOrderListCacheKey(userId, {
+    q: '',
+    estado: '',
+    fechaDesde: '',
+    fechaHasta: '',
+    mecanico: '',
+    page: 1,
+  })
+  const initialCachedList = workOrderListCache.get(defaultCacheKey)
+  const [orders, setOrders] = useState<AdminWorkOrderListItem[]>(() => initialCachedList?.data ?? [])
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [status, setStatus] = useState<WorkOrderStatus | ''>('')
@@ -120,9 +142,11 @@ function WorkOrdersList({ accessToken }: { accessToken: string }) {
   const [dateTo, setDateTo] = useState('')
   const [mechanic, setMechanic] = useState('')
   const [page, setPage] = useState(1)
-  const [total, setTotal] = useState(0)
-  const [totalPages, setTotalPages] = useState(1)
-  const [loading, setLoading] = useState(true)
+  const [total, setTotal] = useState(() => initialCachedList?.pagination.total ?? 0)
+  const [totalPages, setTotalPages] = useState(
+    () => initialCachedList?.pagination.totalPages ?? 1,
+  )
+  const [loading, setLoading] = useState(!initialCachedList)
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -133,6 +157,25 @@ function WorkOrdersList({ accessToken }: { accessToken: string }) {
 
   useEffect(() => {
     let active = true
+    const filters: WorkOrderListFilters = {
+      q: debouncedQuery,
+      estado: status,
+      fechaDesde: dateFrom,
+      fechaHasta: dateTo,
+      mecanico: mechanic.trim(),
+      page,
+    }
+    const cacheKey = workOrderListCacheKey(userId, filters)
+    const cachedList = workOrderListCache.get(cacheKey)
+    if (cachedList) {
+      setOrders(cachedList.data)
+      setTotal(cachedList.pagination.total)
+      setTotalPages(cachedList.pagination.totalPages)
+      setLoading(false)
+    } else {
+      setLoading(true)
+    }
+    setError('')
     void getAdminWorkOrders(accessToken, {
       q: debouncedQuery || undefined,
       estado: status || undefined,
@@ -144,6 +187,7 @@ function WorkOrdersList({ accessToken }: { accessToken: string }) {
     })
       .then((result) => {
         if (!active) return
+        saveWorkOrderListToCache(cacheKey, result)
         setOrders(result.data)
         setTotal(result.pagination.total)
         setTotalPages(result.pagination.totalPages)
@@ -151,8 +195,11 @@ function WorkOrdersList({ accessToken }: { accessToken: string }) {
       .catch((cause: unknown) => {
         if (!active) return
         setError(cause instanceof Error ? cause.message : 'No se pudieron cargar las órdenes.')
-        setOrders([])
-        setTotal(0)
+        if (!cachedList) {
+          setOrders([])
+          setTotal(0)
+          setTotalPages(1)
+        }
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -160,7 +207,7 @@ function WorkOrdersList({ accessToken }: { accessToken: string }) {
     return () => {
       active = false
     }
-  }, [accessToken, debouncedQuery, status, dateFrom, dateTo, mechanic, page, refreshKey])
+  }, [accessToken, userId, debouncedQuery, status, dateFrom, dateTo, mechanic, page, refreshKey])
 
   function resetPage() {
     setPage(1)
