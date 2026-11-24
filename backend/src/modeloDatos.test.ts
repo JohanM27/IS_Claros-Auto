@@ -13,6 +13,13 @@ const statusHistoryMigration = readFileSync(
   ),
   'utf8',
 )
+const workOrderRecordsMigration = readFileSync(
+  new URL(
+    '../prisma/migrations/20261123100000_diagnosticos_trabajos/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 const modelData = JSON.parse(
   readFileSync(new URL('../../docs/modelo-datos.json', import.meta.url), 'utf8'),
 ) as {
@@ -68,5 +75,17 @@ describe('modelo Prisma documentado', () => {
     expect(statusHistoryMigration).toContain('WorkOrderStatusHistory_ordenTrabajoId_fkey')
     expect(statusHistoryMigration).toContain('WorkOrderStatusHistory_usuarioId_fkey')
     expect(statusHistoryMigration.match(/ON DELETE RESTRICT ON UPDATE CASCADE/g)).toHaveLength(2)
+  })
+
+  it('prepara tablas aditivas de diagnóstico, trabajos y auditoría con importes exactos', () => {
+    expect(workOrderRecordsMigration).toContain('CREATE TABLE "DiagnosticoOrden"')
+    expect(workOrderRecordsMigration).toContain('CREATE TABLE "TrabajoRealizado"')
+    expect(workOrderRecordsMigration).toContain('CREATE TABLE "WorkOrderRecordHistory"')
+    expect(workOrderRecordsMigration).toContain('"precioUnitario" DECIMAL(12,2) NOT NULL')
+    expect(workOrderRecordsMigration).toContain('"cantidad" > 0')
+    expect(workOrderRecordsMigration).toContain('"precioUnitario" >= 0')
+    expect(workOrderRecordsMigration).toContain('ON DELETE RESTRICT ON UPDATE CASCADE')
+    expect(schema).toContain('enum WorkOrderRecordAction')
+    expect(schema).toMatch(/idempotencyKey\s+String\s+@unique\s+@db\.Uuid/)
   })
 })

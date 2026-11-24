@@ -4,9 +4,11 @@
   "schema": "public",
   "source": "backend/prisma/schema.prisma",
   "enums": {
-    "AppointmentStatus": ["PENDIENTE", "CONFIRMADA", "CANCELADA", "COMPLETADA"],
     "StaffRole": ["ADMINISTRADOR", "RECEPCIONISTA", "MECANICO"],
-    "WorkOrderStatus": ["ABIERTA", "EN_DIAGNOSTICO", "EN_PROCESO", "FINALIZADA", "CANCELADA"]
+    "AppointmentStatus": ["PENDIENTE", "CONFIRMADA", "CANCELADA", "COMPLETADA"],
+    "WorkOrderStatus": ["ABIERTA", "EN_DIAGNOSTICO", "EN_PROCESO", "FINALIZADA", "CANCELADA"],
+    "WorkOrderRecordType": ["DIAGNOSTICO", "TRABAJO"],
+    "WorkOrderRecordAction": ["CREADO", "ACTUALIZADO", "RETIRADO"]
   },
   "models": [
     {
@@ -20,7 +22,11 @@
           "primaryKey": true,
           "foreignKey": "auth.users.id"
         },
-        { "name": "role", "type": "StaffRole", "databaseType": "StaffRole" },
+        {
+          "name": "role",
+          "type": "StaffRole",
+          "databaseType": "StaffRole"
+        },
         {
           "name": "displayName",
           "type": "String",
@@ -33,7 +39,11 @@
           "databaseType": "TIMESTAMPTZ(3)",
           "default": "now()"
         },
-        { "name": "updatedAt", "type": "DateTime", "databaseType": "TIMESTAMPTZ(3)" }
+        {
+          "name": "updatedAt",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)"
+        }
       ],
       "relations": [
         {
@@ -41,6 +51,36 @@
           "target": "WorkOrderStatusHistory",
           "cardinality": "one-to-many",
           "foreignKey": "WorkOrderStatusHistory.usuarioId"
+        },
+        {
+          "field": "workOrderRecordChanges",
+          "target": "WorkOrderRecordHistory",
+          "cardinality": "one-to-many"
+        },
+        {
+          "field": "diagnosticosCreados",
+          "target": "DiagnosticoOrden",
+          "cardinality": "one-to-many"
+        },
+        {
+          "field": "diagnosticosEditados",
+          "target": "DiagnosticoOrden",
+          "cardinality": "one-to-many"
+        },
+        {
+          "field": "diagnosticChanges",
+          "target": "DiagnosticoOrdenHistory",
+          "cardinality": "one-to-many"
+        },
+        {
+          "field": "trabajosCreados",
+          "target": "TrabajoRealizado",
+          "cardinality": "one-to-many"
+        },
+        {
+          "field": "trabajosEditados",
+          "target": "TrabajoRealizado",
+          "cardinality": "one-to-many"
         }
       ],
       "indexes": []
@@ -56,10 +96,28 @@
           "primaryKey": true,
           "default": "cuid()"
         },
-        { "name": "slug", "type": "String", "databaseType": "VARCHAR(80)", "unique": true },
-        { "name": "name", "type": "String", "databaseType": "VARCHAR(120)" },
-        { "name": "description", "type": "String", "databaseType": "VARCHAR(500)" },
-        { "name": "isActive", "type": "Boolean", "databaseType": "BOOLEAN", "default": true },
+        {
+          "name": "slug",
+          "type": "String",
+          "databaseType": "VARCHAR(80)",
+          "unique": true
+        },
+        {
+          "name": "name",
+          "type": "String",
+          "databaseType": "VARCHAR(120)"
+        },
+        {
+          "name": "description",
+          "type": "String",
+          "databaseType": "VARCHAR(500)"
+        },
+        {
+          "name": "isActive",
+          "type": "Boolean",
+          "databaseType": "BOOLEAN",
+          "default": true
+        },
         {
           "name": "createdAt",
           "type": "DateTime",
@@ -88,9 +146,22 @@
           "primaryKey": true,
           "default": "uuid()"
         },
-        { "name": "name", "type": "String", "databaseType": "VARCHAR(150)" },
-        { "name": "phone", "type": "String", "databaseType": "VARCHAR(30)" },
-        { "name": "email", "type": "String", "databaseType": "VARCHAR(254)", "optional": true },
+        {
+          "name": "name",
+          "type": "String",
+          "databaseType": "VARCHAR(150)"
+        },
+        {
+          "name": "phone",
+          "type": "String",
+          "databaseType": "VARCHAR(30)"
+        },
+        {
+          "name": "email",
+          "type": "String",
+          "databaseType": "VARCHAR(254)",
+          "optional": true
+        },
         {
           "name": "createdAt",
           "type": "DateTime",
@@ -137,10 +208,27 @@
           "databaseType": "UUID",
           "foreignKey": "Customer.id"
         },
-        { "name": "make", "type": "String", "databaseType": "VARCHAR(80)" },
-        { "name": "model", "type": "String", "databaseType": "VARCHAR(100)" },
-        { "name": "year", "type": "Int", "databaseType": "SMALLINT" },
-        { "name": "plate", "type": "String", "databaseType": "VARCHAR(20)", "optional": true },
+        {
+          "name": "make",
+          "type": "String",
+          "databaseType": "VARCHAR(80)"
+        },
+        {
+          "name": "model",
+          "type": "String",
+          "databaseType": "VARCHAR(100)"
+        },
+        {
+          "name": "year",
+          "type": "Int",
+          "databaseType": "SMALLINT"
+        },
+        {
+          "name": "plate",
+          "type": "String",
+          "databaseType": "VARCHAR(20)",
+          "optional": true
+        },
         {
           "name": "createdAt",
           "type": "DateTime",
@@ -201,15 +289,28 @@
           "databaseType": "TEXT",
           "foreignKey": "Service.id"
         },
-        { "name": "requestedAt", "type": "DateTime", "databaseType": "TIMESTAMPTZ(3)" },
-        { "name": "notes", "type": "String", "databaseType": "VARCHAR(1000)", "optional": true },
+        {
+          "name": "requestedAt",
+          "type": "DateTime",
+          "databaseType": "TIMESTAMPTZ(3)"
+        },
+        {
+          "name": "notes",
+          "type": "String",
+          "databaseType": "VARCHAR(1000)",
+          "optional": true
+        },
         {
           "name": "status",
           "type": "AppointmentStatus",
           "databaseType": "AppointmentStatus",
           "default": "PENDIENTE"
         },
-        { "name": "lookupTokenHash", "type": "String", "databaseType": "CHAR(64)" },
+        {
+          "name": "lookupTokenHash",
+          "type": "String",
+          "databaseType": "CHAR(64)"
+        },
         {
           "name": "createdAt",
           "type": "DateTime",
@@ -265,7 +366,12 @@
           "primaryKey": true,
           "default": "uuid()"
         },
-        { "name": "numeroOrden", "type": "String", "databaseType": "VARCHAR(30)", "unique": true },
+        {
+          "name": "numeroOrden",
+          "type": "String",
+          "databaseType": "VARCHAR(30)",
+          "unique": true
+        },
         {
           "name": "clienteId",
           "type": "String",
@@ -286,7 +392,11 @@
           "unique": true,
           "foreignKey": "Appointment.id"
         },
-        { "name": "descripcionProblema", "type": "String", "databaseType": "VARCHAR(2000)" },
+        {
+          "name": "descripcionProblema",
+          "type": "String",
+          "databaseType": "VARCHAR(2000)"
+        },
         {
           "name": "observaciones",
           "type": "String",
@@ -299,14 +409,23 @@
           "databaseType": "VARCHAR(150)",
           "optional": true
         },
-        { "name": "kilometraje", "type": "Int", "databaseType": "INTEGER", "optional": true },
+        {
+          "name": "kilometraje",
+          "type": "Int",
+          "databaseType": "INTEGER",
+          "optional": true
+        },
         {
           "name": "idempotencyKey",
           "type": "String",
           "databaseType": "UUID",
           "unique": true
         },
-        { "name": "requestHash", "type": "String", "databaseType": "CHAR(64)" },
+        {
+          "name": "requestHash",
+          "type": "String",
+          "databaseType": "CHAR(64)"
+        },
         {
           "name": "estado",
           "type": "WorkOrderStatus",
@@ -364,6 +483,21 @@
           "target": "WorkOrderStatusHistory",
           "cardinality": "one-to-many",
           "foreignKey": "WorkOrderStatusHistory.ordenTrabajoId"
+        },
+        {
+          "field": "diagnostico",
+          "target": "DiagnosticoOrden",
+          "cardinality": "one-to-one-optional"
+        },
+        {
+          "field": "trabajos",
+          "target": "TrabajoRealizado",
+          "cardinality": "one-to-many"
+        },
+        {
+          "field": "historialRegistros",
+          "target": "WorkOrderRecordHistory",
+          "cardinality": "one-to-many"
         }
       ],
       "indexes": [["clienteId", "fechaIngreso"], ["vehiculoId"], ["estado", "fechaIngreso"]]
@@ -433,6 +567,275 @@
         }
       ],
       "indexes": [["ordenTrabajoId", "fechaCambio"], ["usuarioId"]]
+    },
+    {
+      "name": "DiagnosticoOrden",
+      "table": "DiagnosticoOrden",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "ordenTrabajoId",
+          "type": "String"
+        },
+        {
+          "name": "diagnostico",
+          "type": "String"
+        },
+        {
+          "name": "causaIdentificada",
+          "type": "String"
+        },
+        {
+          "name": "recomendaciones",
+          "type": "String"
+        },
+        {
+          "name": "observaciones",
+          "type": "String"
+        },
+        {
+          "name": "usuarioRegistroId",
+          "type": "String"
+        },
+        {
+          "name": "usuarioActualizacionId",
+          "type": "String"
+        },
+        {
+          "name": "fechaDiagnostico",
+          "type": "DateTime"
+        },
+        {
+          "name": "fechaCreacion",
+          "type": "DateTime"
+        },
+        {
+          "name": "fechaActualizacion",
+          "type": "DateTime"
+        }
+      ],
+      "relations": [
+        {
+          "field": "ordenTrabajo",
+          "target": "WorkOrder",
+          "cardinality": "many-to-one",
+          "foreignKey": "ordenTrabajoId"
+        },
+        {
+          "field": "usuarioRegistro",
+          "target": "StaffProfile",
+          "cardinality": "many-to-one",
+          "foreignKey": "usuarioRegistroId"
+        },
+        {
+          "field": "usuarioActualizacion",
+          "target": "StaffProfile",
+          "cardinality": "many-to-one",
+          "foreignKey": "usuarioActualizacionId"
+        },
+        {
+          "field": "historial",
+          "target": "DiagnosticoOrdenHistory",
+          "cardinality": "one-to-many"
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "DiagnosticoOrdenHistory",
+      "table": "DiagnosticoOrdenHistory",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "diagnosticoOrdenId",
+          "type": "String"
+        },
+        {
+          "name": "diagnostico",
+          "type": "String"
+        },
+        {
+          "name": "causaIdentificada",
+          "type": "String"
+        },
+        {
+          "name": "recomendaciones",
+          "type": "String"
+        },
+        {
+          "name": "observaciones",
+          "type": "String"
+        },
+        {
+          "name": "usuarioId",
+          "type": "String"
+        },
+        {
+          "name": "fechaCambio",
+          "type": "DateTime"
+        }
+      ],
+      "relations": [
+        {
+          "field": "diagnosticoOrden",
+          "target": "DiagnosticoOrden",
+          "cardinality": "many-to-one",
+          "foreignKey": "diagnosticoOrdenId"
+        },
+        {
+          "field": "usuario",
+          "target": "StaffProfile",
+          "cardinality": "many-to-one",
+          "foreignKey": "usuarioId"
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "TrabajoRealizado",
+      "table": "TrabajoRealizado",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "ordenTrabajoId",
+          "type": "String"
+        },
+        {
+          "name": "nombre",
+          "type": "String"
+        },
+        {
+          "name": "descripcion",
+          "type": "String"
+        },
+        {
+          "name": "cantidad",
+          "type": "Decimal"
+        },
+        {
+          "name": "precioUnitario",
+          "type": "Decimal"
+        },
+        {
+          "name": "mecanicoResponsable",
+          "type": "String"
+        },
+        {
+          "name": "usuarioRegistroId",
+          "type": "String"
+        },
+        {
+          "name": "usuarioActualizacionId",
+          "type": "String"
+        },
+        {
+          "name": "idempotencyKey",
+          "type": "String"
+        },
+        {
+          "name": "requestHash",
+          "type": "String"
+        },
+        {
+          "name": "activo",
+          "type": "Boolean"
+        },
+        {
+          "name": "fechaRetiro",
+          "type": "DateTime"
+        },
+        {
+          "name": "fechaCreacion",
+          "type": "DateTime"
+        },
+        {
+          "name": "fechaActualizacion",
+          "type": "DateTime"
+        }
+      ],
+      "relations": [
+        {
+          "field": "ordenTrabajo",
+          "target": "WorkOrder",
+          "cardinality": "many-to-one",
+          "foreignKey": "ordenTrabajoId"
+        },
+        {
+          "field": "usuarioRegistro",
+          "target": "StaffProfile",
+          "cardinality": "many-to-one",
+          "foreignKey": "usuarioRegistroId"
+        },
+        {
+          "field": "usuarioActualizacion",
+          "target": "StaffProfile",
+          "cardinality": "many-to-one",
+          "foreignKey": "usuarioActualizacionId"
+        }
+      ],
+      "indexes": []
+    },
+    {
+      "name": "WorkOrderRecordHistory",
+      "table": "WorkOrderRecordHistory",
+      "fields": [
+        {
+          "name": "id",
+          "type": "String"
+        },
+        {
+          "name": "ordenTrabajoId",
+          "type": "String"
+        },
+        {
+          "name": "tipo",
+          "type": "WorkOrderRecordType"
+        },
+        {
+          "name": "accion",
+          "type": "WorkOrderRecordAction"
+        },
+        {
+          "name": "registroId",
+          "type": "String"
+        },
+        {
+          "name": "usuarioId",
+          "type": "String"
+        },
+        {
+          "name": "snapshot",
+          "type": "Json"
+        },
+        {
+          "name": "fechaCambio",
+          "type": "DateTime"
+        }
+      ],
+      "relations": [
+        {
+          "field": "ordenTrabajo",
+          "target": "WorkOrder",
+          "cardinality": "many-to-one",
+          "foreignKey": "ordenTrabajoId"
+        },
+        {
+          "field": "usuario",
+          "target": "StaffProfile",
+          "cardinality": "many-to-one",
+          "foreignKey": "usuarioId"
+        }
+      ],
+      "indexes": []
     }
   ]
 }

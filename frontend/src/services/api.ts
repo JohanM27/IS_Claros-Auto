@@ -161,6 +161,56 @@ export type WorkOrderStatusHistoryEntry = {
   fechaCambio: string
   usuario: { userId: string; displayName: string | null }
 }
+export type WorkOrderActor = { userId: string; displayName: string | null }
+export type WorkOrderDiagnosis = {
+  id: string
+  ordenTrabajoId: string
+  diagnostico: string
+  causaIdentificada: string | null
+  recomendaciones: string | null
+  observaciones: string | null
+  usuarioRegistroId: string
+  usuarioActualizacionId: string
+  fechaDiagnostico: string
+  fechaCreacion: string
+  fechaActualizacion: string
+  usuarioRegistro: WorkOrderActor
+  usuarioActualizacion: WorkOrderActor
+}
+export type WorkTask = {
+  id: string
+  ordenTrabajoId: string
+  nombre: string
+  descripcion: string | null
+  cantidad: string
+  precioUnitario: string
+  subtotal: string
+  mecanicoResponsable: string | null
+  usuarioRegistroId: string
+  usuarioActualizacionId: string
+  activo: boolean
+  fechaCreacion: string
+  fechaActualizacion: string
+  fechaRetiro: string | null
+  usuarioRegistro?: WorkOrderActor
+  usuarioActualizacion?: WorkOrderActor
+}
+export type WorkTaskInput = {
+  nombre: string
+  descripcion: string | null
+  cantidad: string
+  precioUnitario: string
+  mecanicoResponsable: string | null
+}
+export type WorkOrderRecordAudit = {
+  id: string
+  tipo: 'DIAGNOSTICO' | 'TRABAJO'
+  accion: 'CREADO' | 'ACTUALIZADO' | 'RETIRADO'
+  registroId: string
+  snapshot: Record<string, unknown>
+  fechaCambio: string
+  usuario: WorkOrderActor
+}
 export type ChangeWorkOrderStatusInput = {
   estadoActual: WorkOrderStatus
   estado: WorkOrderStatus
@@ -240,6 +290,100 @@ export function getAdminWorkOrder(accessToken: string, id: string) {
 export function getWorkOrderStatusHistory(accessToken: string, id: string) {
   return authenticatedRequest<WorkOrderStatusHistoryEntry[]>(
     `/admin/ordenes/${encodeURIComponent(id)}/historial`,
+    accessToken,
+  )
+}
+
+export function getWorkOrderDiagnosis(accessToken: string, id: string) {
+  return authenticatedRequest<WorkOrderDiagnosis | null>(
+    `/admin/ordenes/${encodeURIComponent(id)}/diagnostico`,
+    accessToken,
+  )
+}
+
+export function saveWorkOrderDiagnosis(
+  accessToken: string,
+  id: string,
+  input: Omit<
+    WorkOrderDiagnosis,
+    | 'id'
+    | 'ordenTrabajoId'
+    | 'usuarioRegistroId'
+    | 'usuarioActualizacionId'
+    | 'fechaDiagnostico'
+    | 'fechaCreacion'
+    | 'fechaActualizacion'
+    | 'usuarioRegistro'
+    | 'usuarioActualizacion'
+  >,
+) {
+  return authenticatedRequest<WorkOrderDiagnosis>(
+    `/admin/ordenes/${encodeURIComponent(id)}/diagnostico`,
+    accessToken,
+    {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export function getWorkOrderTasks(accessToken: string, id: string) {
+  return authenticatedRequest<{ trabajos: WorkTask[]; totalManoObra: string; moneda: 'HNL' }>(
+    `/admin/ordenes/${encodeURIComponent(id)}/trabajos`,
+    accessToken,
+  )
+}
+
+export function createWorkOrderTask(
+  accessToken: string,
+  id: string,
+  input: WorkTaskInput & { idempotencyKey: string },
+) {
+  return authenticatedRequest<{ trabajo: WorkTask; duplicate: boolean }>(
+    `/admin/ordenes/${encodeURIComponent(id)}/trabajos`,
+    accessToken,
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export function updateWorkOrderTask(
+  accessToken: string,
+  id: string,
+  taskId: string,
+  input: WorkTaskInput & { fechaActualizacionEsperada: string },
+) {
+  return authenticatedRequest<WorkTask>(
+    `/admin/ordenes/${encodeURIComponent(id)}/trabajos/${encodeURIComponent(taskId)}`,
+    accessToken,
+    {
+      method: 'PATCH',
+      body: JSON.stringify(input),
+    },
+  )
+}
+
+export function removeWorkOrderTask(
+  accessToken: string,
+  id: string,
+  taskId: string,
+  fechaActualizacionEsperada: string,
+) {
+  return authenticatedRequest<WorkTask>(
+    `/admin/ordenes/${encodeURIComponent(id)}/trabajos/${encodeURIComponent(taskId)}`,
+    accessToken,
+    {
+      method: 'DELETE',
+      body: JSON.stringify({ fechaActualizacionEsperada }),
+    },
+  )
+}
+
+export function getWorkOrderRecordAudit(accessToken: string, id: string) {
+  return authenticatedRequest<WorkOrderRecordAudit[]>(
+    `/admin/ordenes/${encodeURIComponent(id)}/auditoria`,
     accessToken,
   )
 }
