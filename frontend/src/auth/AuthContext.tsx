@@ -1,11 +1,21 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react'
 import type { Session, User } from '@supabase/supabase-js'
-import { ApiError, getEmployeeIdentity } from '../services/api'
+import { ApiError, getEmployeeIdentity, type EmployeeIdentity } from '../services/api'
 import { supabase } from './supabaseClient'
 
 type AuthContextValue = {
   session: Session | null
   user: User | null
+  employee: EmployeeIdentity | null
+  employeeLoading: boolean
   loading: boolean
   isConfigured: boolean
   signIn: (email: string, password: string) => Promise<void>
@@ -17,6 +27,38 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(Boolean(supabase))
+  const [employeeState, setEmployeeState] = useState<{
+    userId: string
+    identity: EmployeeIdentity | null
+    loading: boolean
+  } | null>(null)
+  const identityCache = useRef(new Map<string, EmployeeIdentity>())
+  const [identityCacheState, setIdentityCacheState] = useState(
+    () => new Map<string, EmployeeIdentity>(),
+  )
+  const identityRequests = useRef(new Map<string, Promise<EmployeeIdentity>>())
+
+  const loadEmployeeIdentity = useCallback((userId: string, accessToken: string) => {
+    const cachedIdentity = identityCache.current.get(userId)
+    if (cachedIdentity) return Promise.resolve(cachedIdentity)
+
+    const pendingRequest = identityRequests.current.get(userId)
+    if (pendingRequest) return pendingRequest
+
+    const request = getEmployeeIdentity(accessToken)
+      .then((identity) => {
+        identityCache.current.set(userId, identity)
+        setIdentityCacheState(new Map(identityCache.current))
+        return identity
+      })
+      .finally(() => {
+        if (identityRequests.current.get(userId) === request) {
+          identityRequests.current.delete(userId)
+        }
+      })
+    identityRequests.current.set(userId, request)
+    return request
+  }, [])
 
   useEffect(() => {
     if (!supabase) return
@@ -26,6 +68,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (active) {
         setSession(nextSession)
         setLoading(false)
+        if (!nextSession) {
+          identityCache.current.clear()
+          setIdentityCacheState(new Map())
+          identityRequests.current.clear()
+        }
       }
     })
 
@@ -46,6 +93,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       data.subscription.unsubscribe()
     }
   }, [])
+
+  const userId = session?.user.id
+  const accessToken = session?.access_token
+  useEffect(() => {
+    if (!userId || !accessToken || identityCacheState.has(userId)) return
+    let active = true
+    void loadEmployeeIdentity(userId, accessToken)
+      .then((identity) => {
+        if (active) setEmployeeState({ userId, identity, loading: false })
+      })
+      .catch(() => {
+        if (active) setEmployeeState({ userId, identity: null, loading: false })
+      })
+
+    return () => {
+      active = false
+    }
+  }, [userId, accessToken, identityCacheState, loadEmployeeIdentity])
+
+  const employee = session
+    ? (identityCacheState.get(session.user.id) ??
+      (employeeState?.userId === session.user.id ? employeeState.identity : null))
+    : null
+  const employeeLoading = Boolean(
+    session &&
+    !identityCacheState.has(session.user.id) &&
+    (employeeState?.userId !== session.user.id || employeeState.loading),
+  )
 
   async function signIn(email: string, password: string) {
     if (!supabase) {
@@ -68,10 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     try {
-      const employee = await getEmployeeIdentity(accessToken)
-      if (employee.role !== 'ADMINISTRADOR' && employee.role !== 'RECEPCIONISTA') {
+      const identity = await loadEmployeeIdentity(data.user.id, accessToken)
+      if (identity.role !== 'ADMINISTRADOR' && identity.role !== 'RECEPCIONISTA') {
         throw new ApiError('Rol sin acceso al sistema.', 403)
       }
+      setEmployeeState({ userId: data.user.id, identity, loading: false })
     } catch (cause) {
       await supabase.auth.signOut()
       if (cause instanceof ApiError && cause.status === 403) {
@@ -87,6 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!supabase) return
     const { error } = await supabase.auth.signOut()
     if (error) throw new Error('No se pudo cerrar la sesión. Intenta de nuevo.')
+    identityCache.current.clear()
+    setIdentityCacheState(new Map())
+    identityRequests.current.clear()
+    setSession(null)
   }
 
   return (
@@ -94,6 +174,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         session,
         user: session?.user ?? null,
+        employee,
+        employeeLoading,
         loading,
         isConfigured: Boolean(supabase),
         signIn,

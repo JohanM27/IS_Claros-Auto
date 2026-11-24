@@ -7,7 +7,12 @@ import { WorkOrdersPage } from './WorkOrdersPage'
 
 const mocks = vi.hoisted(() => ({
   session: { access_token: 'access-token' } as { access_token: string } | null,
-  identity: vi.fn(),
+  employee: {
+    id: 'employee-1',
+    email: 'recepcion@example.com',
+    role: 'RECEPCIONISTA',
+    displayName: 'Recepción',
+  } as { id: string; email: string; role: string; displayName: string } | null,
   list: vi.fn(),
   getOrder: vi.fn(),
   history: vi.fn(),
@@ -26,7 +31,13 @@ const mocks = vi.hoisted(() => ({
 }))
 
 vi.mock('../auth/AuthContext', () => ({
-  useAuth: () => ({ session: mocks.session, loading: false, signOut: mocks.signOut }),
+  useAuth: () => ({
+    session: mocks.session,
+    employee: mocks.employee,
+    employeeLoading: false,
+    loading: false,
+    signOut: mocks.signOut,
+  }),
 }))
 
 vi.mock('../services/api', () => ({
@@ -38,7 +49,6 @@ vi.mock('../services/api', () => ({
       super(message)
     }
   },
-  getEmployeeIdentity: mocks.identity,
   getAdminWorkOrders: mocks.list,
   getAdminWorkOrder: mocks.getOrder,
   getWorkOrderStatusHistory: mocks.history,
@@ -60,12 +70,12 @@ afterEach(cleanup)
 beforeEach(() => {
   vi.clearAllMocks()
   mocks.session = { access_token: 'access-token' }
-  mocks.identity.mockResolvedValue({
+  mocks.employee = {
     id: 'employee-1',
     email: 'recepcion@example.com',
     role: 'RECEPCIONISTA',
     displayName: 'Recepción',
-  })
+  }
   mocks.list.mockResolvedValue({
     data: [
       {
@@ -164,12 +174,12 @@ describe('página de órdenes de trabajo', () => {
   it.each(['ADMINISTRADOR', 'RECEPCIONISTA'] as const)(
     'permite consultar órdenes a %s',
     async (role) => {
-      mocks.identity.mockResolvedValue({
+      mocks.employee = {
         id: 'employee-1',
         email: 'empleado@example.com',
         role,
         displayName: role,
-      })
+      }
 
       renderPage()
 
@@ -325,9 +335,7 @@ describe('página de órdenes de trabajo', () => {
   })
 
   it('no consulta órdenes para perfiles sin rol administrativo autorizado', async () => {
-    mocks.identity.mockRejectedValue(
-      new Error('El acceso al sistema está reservado para administración y recepción.'),
-    )
+    mocks.employee = null
     renderPage()
 
     expect(await screen.findByRole('alert')).toBeTruthy()
@@ -370,7 +378,7 @@ describe('página de órdenes de trabajo', () => {
   })
 
   it('no muestra el formulario si la cuenta carece de perfil autorizado', async () => {
-    mocks.identity.mockRejectedValue(new Error('No autorizado'))
+    mocks.employee = null
     render(
       <MemoryRouter initialEntries={['/admin/ordenes/nueva']}>
         <Routes>

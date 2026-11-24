@@ -242,20 +242,37 @@ export type CreateWorkOrderInput = {
   idempotencyKey: string
 }
 
+const inFlightReads = new Map<string, Promise<unknown>>()
+
 async function authenticatedRequest<T>(
   path: string,
   accessToken: string,
   init?: RequestInit,
   includeEnvelope = false,
 ) {
-  return request<T>(
-    path,
-    {
-      ...init,
-      headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
+  const authenticatedInit: RequestInit = {
+    ...init,
+    headers: { ...init?.headers, Authorization: `Bearer ${accessToken}` },
+  }
+  const load = () => request<T>(path, authenticatedInit, includeEnvelope)
+
+  if ((init?.method ?? 'GET').toUpperCase() !== 'GET') return load()
+
+  const key = `${accessToken}:${path}:${includeEnvelope}`
+  const activeRequest = inFlightReads.get(key) as Promise<T> | undefined
+  if (activeRequest) return activeRequest
+
+  const pendingRequest = load()
+  inFlightReads.set(key, pendingRequest)
+  void pendingRequest.then(
+    () => {
+      if (inFlightReads.get(key) === pendingRequest) inFlightReads.delete(key)
     },
-    includeEnvelope,
+    () => {
+      if (inFlightReads.get(key) === pendingRequest) inFlightReads.delete(key)
+    },
   )
+  return pendingRequest
 }
 
 export function getEmployeeIdentity(accessToken: string) {

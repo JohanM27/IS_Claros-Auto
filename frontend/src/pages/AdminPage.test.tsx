@@ -7,14 +7,25 @@ import { AdminPage } from './AdminPage'
 
 const mocks = vi.hoisted(() => ({
   session: { access_token: 'token' },
-  identity: vi.fn(),
+  employee: {
+    id: 'employee-1',
+    email: 'recepcion@example.com',
+    role: 'RECEPCIONISTA',
+    displayName: 'Recepción',
+  } as { id: string; email: string; role: string; displayName: string } | null,
   list: vi.fn(),
   update: vi.fn(),
   signOut: vi.fn(),
 }))
 
 vi.mock('../auth/AuthContext', () => ({
-  useAuth: () => ({ session: mocks.session, loading: false, signOut: mocks.signOut }),
+  useAuth: () => ({
+    session: mocks.session,
+    employee: mocks.employee,
+    employeeLoading: false,
+    loading: false,
+    signOut: mocks.signOut,
+  }),
 }))
 vi.mock('../services/api', () => ({
   ApiError: class ApiError extends Error {
@@ -25,7 +36,6 @@ vi.mock('../services/api', () => ({
       super(message)
     }
   },
-  getEmployeeIdentity: mocks.identity,
   getAdminAppointments: mocks.list,
   setAppointmentStatus: mocks.update,
 }))
@@ -34,12 +44,12 @@ vi.mock('../auth/supabaseClient', () => ({ supabase: null }))
 afterEach(cleanup)
 beforeEach(() => {
   vi.clearAllMocks()
-  mocks.identity.mockResolvedValue({
+  mocks.employee = {
     id: 'employee-1',
     email: 'recepcion@example.com',
     role: 'RECEPCIONISTA',
     displayName: 'Recepción',
-  })
+  }
   mocks.list.mockResolvedValue([
     {
       id: 'appointment-1',
@@ -72,16 +82,13 @@ describe('panel administrativo', () => {
   it('consulta el API con la sesión y presenta la solicitud de cita', async () => {
     renderAdmin()
     expect(await screen.findByText('María López')).toBeTruthy()
-    expect(mocks.identity).toHaveBeenCalledWith('token')
     expect(mocks.list).toHaveBeenCalledWith('token')
   })
 
-  it('inicia en paralelo la validación de perfil y la carga de citas', () => {
-    mocks.identity.mockImplementation(() => new Promise(() => {}))
+  it('carga las citas usando el perfil de empleado ya conservado en autenticación', () => {
     mocks.list.mockImplementation(() => new Promise(() => {}))
     const view = renderAdmin()
 
-    expect(mocks.identity).toHaveBeenCalledWith('token')
     expect(mocks.list).toHaveBeenCalledWith('token')
     view.unmount()
   })
@@ -109,8 +116,9 @@ describe('panel administrativo', () => {
   })
 
   it('explica cuando la cuenta no tiene perfil autorizado', async () => {
-    mocks.identity.mockRejectedValue(new Error('sin rol'))
+    mocks.employee = null
     renderAdmin()
     expect(await screen.findByRole('alert')).toBeTruthy()
+    expect(mocks.list).not.toHaveBeenCalled()
   })
 })
