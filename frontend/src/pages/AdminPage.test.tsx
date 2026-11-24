@@ -49,7 +49,7 @@ beforeEach(() => {
     email: 'recepcion@example.com',
     role: 'RECEPCIONISTA',
     displayName: 'Recepción',
-  })
+  }
   mocks.list.mockResolvedValue([
     {
       id: 'appointment-1',

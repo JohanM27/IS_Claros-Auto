@@ -67,13 +67,7 @@ function clearWorkOrderCacheForUser(userId: string) {
 }
 
 export function WorkOrdersPage() {
-  const {
-    session,
-    employee,
-    employeeLoading,
-    loading: authLoading,
-    signOut,
-  } = useAuth()
+  const { session, employee, employeeLoading, loading: authLoading, signOut } = useAuth()
   const location = useLocation()
   const { id: orderId } = useParams()
   const isCreatePage = location.pathname.endsWith('/nueva')
@@ -134,7 +128,9 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
     page: 1,
   })
   const initialCachedList = workOrderListCache.get(defaultCacheKey)
-  const [orders, setOrders] = useState<AdminWorkOrderListItem[]>(() => initialCachedList?.data ?? [])
+  const [orders, setOrders] = useState<AdminWorkOrderListItem[]>(
+    () => initialCachedList?.data ?? [],
+  )
   const [query, setQuery] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
   const [status, setStatus] = useState<WorkOrderStatus | ''>('')
@@ -143,12 +139,28 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
   const [mechanic, setMechanic] = useState('')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(() => initialCachedList?.pagination.total ?? 0)
-  const [totalPages, setTotalPages] = useState(
-    () => initialCachedList?.pagination.totalPages ?? 1,
-  )
-  const [loading, setLoading] = useState(!initialCachedList)
+  const [totalPages, setTotalPages] = useState(() => initialCachedList?.pagination.totalPages ?? 1)
+  const [manualLoading, setLoading] = useState(!initialCachedList)
+  const [settledKey, setSettledKey] = useState(initialCachedList ? defaultCacheKey : '')
   const [error, setError] = useState('')
   const [refreshKey, setRefreshKey] = useState(0)
+
+  const filters: WorkOrderListFilters = {
+    q: debouncedQuery,
+    estado: status,
+    fechaDesde: dateFrom,
+    fechaHasta: dateTo,
+    mecanico: mechanic.trim(),
+    page,
+  }
+  const cacheKey = workOrderListCacheKey(userId, filters)
+  const cachedList = workOrderListCache.get(cacheKey)
+  const hasLoadedCurrentList = settledKey === cacheKey
+  const visibleOrders = cachedList?.data ?? (hasLoadedCurrentList ? orders : [])
+  const visibleTotal = cachedList?.pagination.total ?? (hasLoadedCurrentList ? total : 0)
+  const visibleTotalPages =
+    cachedList?.pagination.totalPages ?? (hasLoadedCurrentList ? totalPages : 1)
+  const loading = manualLoading || (!cachedList && !hasLoadedCurrentList)
 
   useEffect(() => {
     const timeout = setTimeout(() => setDebouncedQuery(query.trim()), 300)
@@ -157,25 +169,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
 
   useEffect(() => {
     let active = true
-    const filters: WorkOrderListFilters = {
-      q: debouncedQuery,
-      estado: status,
-      fechaDesde: dateFrom,
-      fechaHasta: dateTo,
-      mecanico: mechanic.trim(),
-      page,
-    }
-    const cacheKey = workOrderListCacheKey(userId, filters)
-    const cachedList = workOrderListCache.get(cacheKey)
-    if (cachedList) {
-      setOrders(cachedList.data)
-      setTotal(cachedList.pagination.total)
-      setTotalPages(cachedList.pagination.totalPages)
-      setLoading(false)
-    } else {
-      setLoading(true)
-    }
-    setError('')
+    const hasCachedResult = workOrderListCache.has(cacheKey)
     void getAdminWorkOrders(accessToken, {
       q: debouncedQuery || undefined,
       estado: status || undefined,
@@ -188,6 +182,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
       .then((result) => {
         if (!active) return
         saveWorkOrderListToCache(cacheKey, result)
+        setSettledKey(cacheKey)
         setOrders(result.data)
         setTotal(result.pagination.total)
         setTotalPages(result.pagination.totalPages)
@@ -195,7 +190,8 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
       .catch((cause: unknown) => {
         if (!active) return
         setError(cause instanceof Error ? cause.message : 'No se pudieron cargar las órdenes.')
-        if (!cachedList) {
+        if (!hasCachedResult) {
+          setSettledKey(cacheKey)
           setOrders([])
           setTotal(0)
           setTotalPages(1)
@@ -207,7 +203,18 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
     return () => {
       active = false
     }
-  }, [accessToken, userId, debouncedQuery, status, dateFrom, dateTo, mechanic, page, refreshKey])
+  }, [
+    accessToken,
+    userId,
+    cacheKey,
+    debouncedQuery,
+    status,
+    dateFrom,
+    dateTo,
+    mechanic,
+    page,
+    refreshKey,
+  ])
 
   function resetPage() {
     setPage(1)
@@ -228,8 +235,8 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
   }
 
   const hasFilters = Boolean(query || status || dateFrom || dateTo || mechanic)
-  const firstResult = total === 0 ? 0 : (page - 1) * 10 + 1
-  const lastResult = Math.min(page * 10, total)
+  const firstResult = visibleTotal === 0 ? 0 : (page - 1) * 10 + 1
+  const lastResult = Math.min(page * 10, visibleTotal)
 
   return (
     <section>
@@ -350,7 +357,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
       )}
       {loading ? (
         <p role="status">Cargando órdenes…</p>
-      ) : orders.length === 0 ? (
+      ) : visibleOrders.length === 0 ? (
         <p className="rounded-xl border border-slate-200 bg-white p-8 text-slate-600">
           {hasFilters
             ? 'No se encontraron órdenes con esos criterios.'
@@ -393,7 +400,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {orders.map((order) => (
+                {visibleOrders.map((order) => (
                   <tr key={order.id}>
                     <td className="whitespace-nowrap px-4 py-4 font-bold">{order.numeroOrden}</td>
                     <td className="whitespace-nowrap px-4 py-4">
@@ -423,7 +430,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
             </table>
           </div>
           <div className="grid gap-3 md:hidden">
-            {orders.map((order) => (
+            {visibleOrders.map((order) => (
               <article
                 key={order.id}
                 className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"
@@ -452,7 +459,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-slate-600">
-              Mostrando {firstResult}–{lastResult} de {total} órdenes
+              Mostrando {firstResult}–{lastResult} de {visibleTotal} órdenes
             </p>
             <div className="flex items-center gap-2">
               <button
@@ -468,7 +475,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
                 Anterior
               </button>
               <span className="text-sm text-slate-600">
-                Página {page} de {totalPages}
+                Página {page} de {visibleTotalPages}
               </span>
               <button
                 type="button"
@@ -477,7 +484,7 @@ function WorkOrdersList({ accessToken, userId }: { accessToken: string; userId: 
                   setLoading(true)
                   setError('')
                 }}
-                disabled={page >= totalPages || loading}
+                disabled={page >= visibleTotalPages || loading}
                 className="rounded-md border border-slate-300 bg-white px-3 py-2 font-semibold disabled:opacity-50"
               >
                 Siguiente

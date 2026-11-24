@@ -24,25 +24,37 @@ function saveAppointmentsToCache(employeeId: string, appointments: AdminAppointm
 
 export function AdminPage() {
   const { session, employee, employeeLoading, loading: authLoading, signOut } = useAuth()
+  const cachedAppointments = employee ? appointmentCache.get(employee.id) : undefined
   const [appointments, setAppointments] = useState<AdminAppointment[]>(() =>
-    employee ? appointmentCache.get(employee.id) ?? [] : [],
+    employee ? (appointmentCache.get(employee.id) ?? []) : [],
   )
-  const [loading, setLoading] = useState(
-    () => !employee || !appointmentCache.has(employee.id),
-  )
+  const [appointmentsEmployeeId, setAppointmentsEmployeeId] = useState(employee?.id ?? '')
+  const [loadedEmployeeId, setLoadedEmployeeId] = useState('')
+  const [loading, setLoading] = useState(true)
   const [pendingId, setPendingId] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [realtimeStatus, setRealtimeStatus] = useState<'connecting' | 'live' | 'offline'>(() =>
     supabase ? 'connecting' : 'offline',
   )
+  const visibleAppointments = employee
+    ? appointmentsEmployeeId === employee.id
+      ? appointments
+      : (cachedAppointments ?? [])
+    : []
+  const isLoading =
+    employeeLoading ||
+    Boolean(employee && !cachedAppointments && (loading || loadedEmployeeId !== employee.id))
 
   const refreshAppointments = useCallback(async () => {
     if (!session) return
     setRefreshing(true)
     try {
       const result = await getAdminAppointments(session.access_token)
-      if (employee) saveAppointmentsToCache(employee.id, result)
+      if (employee) {
+        saveAppointmentsToCache(employee.id, result)
+        setAppointmentsEmployeeId(employee.id)
+      }
       setAppointments(result)
       setError('')
     } catch (cause) {
@@ -57,13 +69,6 @@ export function AdminPage() {
     let active = true
     let refreshTimer: ReturnType<typeof setTimeout> | undefined
     let channel: ReturnType<NonNullable<typeof supabase>['channel']> | null = null
-    const cachedAppointments = employee ? appointmentCache.get(employee.id) : undefined
-    if (cachedAppointments) {
-      setAppointments(cachedAppointments)
-      setLoading(false)
-    } else {
-      setLoading(true)
-    }
     void (async () => {
       try {
         if (!active) return
@@ -91,10 +96,13 @@ export function AdminPage() {
         const appointments = await getAdminAppointments(session.access_token)
         if (!active) return
         saveAppointmentsToCache(employee.id, appointments)
+        setAppointmentsEmployeeId(employee.id)
+        setLoadedEmployeeId(employee.id)
         setError('')
         setAppointments(appointments)
       } catch (cause) {
         if (!active) return
+        if (employee) setLoadedEmployeeId(employee.id)
         setRealtimeStatus('offline')
         setError(
           cause instanceof ApiError && cause.status === 403
@@ -125,13 +133,14 @@ export function AdminPage() {
     setError('')
     try {
       const updated = await setAppointmentStatus(session.access_token, appointment.id, status)
-      setAppointments((current) => {
-        const next = current.map((item) =>
-          item.id === updated.id ? { ...item, status: updated.status } : item,
-        )
-        if (employee) saveAppointmentsToCache(employee.id, next)
-        return next
-      })
+      const next = visibleAppointments.map((item) =>
+        item.id === updated.id ? { ...item, status: updated.status } : item,
+      )
+      if (employee) {
+        saveAppointmentsToCache(employee.id, next)
+        setAppointmentsEmployeeId(employee.id)
+      }
+      setAppointments(next)
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'No se pudo actualizar la cita.')
     } finally {
@@ -180,15 +189,15 @@ export function AdminPage() {
             {error}
           </p>
         )}
-        {loading ? (
+        {isLoading ? (
           <p role="status">Cargando citas…</p>
-        ) : !error && appointments.length === 0 ? (
+        ) : !error && visibleAppointments.length === 0 ? (
           <p className="rounded-xl border border-slate-200 bg-white p-8 text-slate-600">
             Todavía no hay citas registradas.
           </p>
         ) : (
           <section aria-label="Solicitudes de cita" className="grid gap-4">
-            {appointments.map((appointment) => (
+            {visibleAppointments.map((appointment) => (
               <article
                 key={appointment.id}
                 className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
