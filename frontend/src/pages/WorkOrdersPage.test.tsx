@@ -216,6 +216,7 @@ describe('página de órdenes de trabajo', () => {
       </MemoryRouter>,
     )
     expect(await screen.findByRole('heading', { name: 'Diagnóstico del vehículo' })).toBeTruthy()
+    await screen.findByRole('button', { name: 'Guardar diagnóstico' })
     expect(screen.getAllByText('Ruido al frenar').length).toBeGreaterThanOrEqual(2)
     await user.type(screen.getByLabelText('Diagnóstico técnico *'), 'Pastillas desgastadas')
     await user.type(screen.getByLabelText('Reparaciones recomendadas'), 'Reemplazar pastillas')

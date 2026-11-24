@@ -86,6 +86,6 @@ describe('modelo Prisma documentado', () => {
     expect(workOrderRecordsMigration).toContain('"precioUnitario" >= 0')
     expect(workOrderRecordsMigration).toContain('ON DELETE RESTRICT ON UPDATE CASCADE')
     expect(schema).toContain('enum WorkOrderRecordAction')
-    expect(schema).toContain('idempotencyKey        String        @unique @db.Uuid')
+    expect(schema).toMatch(/idempotencyKey\s+String\s+@unique\s+@db\.Uuid/)
   })
 })
