@@ -20,6 +20,13 @@ const workOrderRecordsMigration = readFileSync(
   ),
   'utf8',
 )
+const inventoryMigration = readFileSync(
+  new URL(
+    '../prisma/migrations/20261124120000_inventario_repuestos/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 const modelData = JSON.parse(
   readFileSync(new URL('../../docs/modelo-datos.json', import.meta.url), 'utf8'),
 ) as {
@@ -87,5 +94,17 @@ describe('modelo Prisma documentado', () => {
     expect(workOrderRecordsMigration).toContain('ON DELETE RESTRICT ON UPDATE CASCADE')
     expect(schema).toContain('enum WorkOrderRecordAction')
     expect(schema).toMatch(/idempotencyKey\s+String\s+@unique\s+@db\.Uuid/)
+  })
+
+  it('prepara inventario con SKU secuencial, cantidades decimales y relaciones restrictivas', () => {
+    expect(inventoryMigration).toContain('CREATE SEQUENCE "RepuestoSku_seq"')
+    expect(inventoryMigration).toContain('CREATE TABLE "CategoriaRepuesto"')
+    expect(inventoryMigration).toContain('CREATE TABLE "Repuesto"')
+    expect(inventoryMigration).toContain('"codigoBarras" VARCHAR(80)')
+    expect(inventoryMigration).toContain('"stockActual" DECIMAL(12,3) NOT NULL DEFAULT 0')
+    expect(inventoryMigration).toContain('"precioCompra" >= 0')
+    expect(inventoryMigration).toContain('"stockActual" >= 0')
+    expect(inventoryMigration).toContain('ON DELETE RESTRICT ON UPDATE CASCADE')
+    expect(inventoryMigration).not.toMatch(/ubicaci[oó]n|bodega|estante|gaveta/i)
   })
 })

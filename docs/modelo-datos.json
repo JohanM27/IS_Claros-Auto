@@ -8,7 +8,20 @@
     "AppointmentStatus": ["PENDIENTE", "CONFIRMADA", "CANCELADA", "COMPLETADA"],
     "WorkOrderStatus": ["ABIERTA", "EN_DIAGNOSTICO", "EN_PROCESO", "FINALIZADA", "CANCELADA"],
     "WorkOrderRecordType": ["DIAGNOSTICO", "TRABAJO"],
-    "WorkOrderRecordAction": ["CREADO", "ACTUALIZADO", "RETIRADO"]
+    "WorkOrderRecordAction": ["CREADO", "ACTUALIZADO", "RETIRADO"],
+    "UnidadMedidaRepuesto": [
+      "UNIDAD",
+      "LITRO",
+      "GALON",
+      "MILILITRO",
+      "METRO",
+      "KILOGRAMO",
+      "GRAMO",
+      "JUEGO",
+      "PAR",
+      "CAJA",
+      "BOTELLA"
+    ]
   },
   "models": [
     {
@@ -84,6 +97,55 @@
         }
       ],
       "indexes": []
+    },
+    {
+      "name": "CategoriaRepuesto",
+      "table": "CategoriaRepuesto",
+      "fields": [
+        { "name": "id", "type": "String" },
+        { "name": "nombre", "type": "String" },
+        { "name": "nombreNormalizado", "type": "String" },
+        { "name": "descripcion", "type": "String" },
+        { "name": "activo", "type": "Boolean" },
+        { "name": "fechaCreacion", "type": "DateTime" },
+        { "name": "fechaActualizacion", "type": "DateTime" }
+      ],
+      "relations": [{ "field": "repuestos", "target": "Repuesto", "cardinality": "one-to-many" }],
+      "indexes": [["activo", "nombre"]]
+    },
+    {
+      "name": "Repuesto",
+      "table": "Repuesto",
+      "fields": [
+        { "name": "id", "type": "String" },
+        { "name": "sku", "type": "String" },
+        { "name": "codigoBarras", "type": "String" },
+        { "name": "nombre", "type": "String" },
+        { "name": "descripcion", "type": "String" },
+        { "name": "categoriaId", "type": "String" },
+        { "name": "marca", "type": "String" },
+        { "name": "numeroParte", "type": "String" },
+        { "name": "unidadMedida", "type": "UnidadMedidaRepuesto" },
+        { "name": "precioCompra", "type": "Decimal" },
+        { "name": "precioVenta", "type": "Decimal" },
+        { "name": "stockActual", "type": "Decimal" },
+        { "name": "stockMinimo", "type": "Decimal" },
+        { "name": "activo", "type": "Boolean" },
+        { "name": "fechaCreacion", "type": "DateTime" },
+        { "name": "fechaActualizacion", "type": "DateTime" }
+      ],
+      "relations": [
+        {
+          "field": "categoria",
+          "target": "CategoriaRepuesto",
+          "cardinality": "many-to-one",
+          "foreignKey": "Repuesto.categoriaId"
+        }
+      ],
+      "indexes": [
+        ["categoriaId", "activo"],
+        ["activo", "nombre"]
+      ]
     },
     {
       "name": "Service",

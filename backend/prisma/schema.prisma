@@ -28,6 +28,56 @@ model StaffProfile {
   trabajosEditados       TrabajoRealizado[]        @relation("WorkTaskUpdatedBy")
 }
 
+enum UnidadMedidaRepuesto {
+  UNIDAD
+  LITRO
+  GALON
+  MILILITRO
+  METRO
+  KILOGRAMO
+  GRAMO
+  JUEGO
+  PAR
+  CAJA
+  BOTELLA
+}
+
+model CategoriaRepuesto {
+  id                 String     @id @default(uuid()) @db.Uuid
+  nombre             String     @db.VarChar(150)
+  nombreNormalizado  String     @unique @db.VarChar(150)
+  descripcion        String?    @db.VarChar(1000)
+  activo             Boolean    @default(true)
+  fechaCreacion      DateTime   @default(now()) @db.Timestamptz(3)
+  fechaActualizacion DateTime   @updatedAt @db.Timestamptz(3)
+  repuestos          Repuesto[]
+
+  @@index([activo, nombre])
+}
+
+model Repuesto {
+  id                 String               @id @default(uuid()) @db.Uuid
+  sku                String               @unique @db.VarChar(20)
+  codigoBarras       String?              @unique @db.VarChar(80)
+  nombre             String               @db.VarChar(180)
+  descripcion        String?              @db.VarChar(2000)
+  categoriaId        String               @db.Uuid
+  marca              String?              @db.VarChar(100)
+  numeroParte        String?              @db.VarChar(100)
+  unidadMedida       UnidadMedidaRepuesto @default(UNIDAD)
+  precioCompra       Decimal              @db.Decimal(12, 2)
+  precioVenta        Decimal              @db.Decimal(12, 2)
+  stockActual        Decimal              @default(0) @db.Decimal(12, 3)
+  stockMinimo        Decimal              @default(0) @db.Decimal(12, 3)
+  activo             Boolean              @default(true)
+  fechaCreacion      DateTime             @default(now()) @db.Timestamptz(3)
+  fechaActualizacion DateTime             @updatedAt @db.Timestamptz(3)
+  categoria          CategoriaRepuesto    @relation(fields: [categoriaId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([categoriaId, activo])
+  @@index([activo, nombre])
+}
+
 model Service {
   id           String        @id @default(cuid())
   slug         String        @unique @db.VarChar(80)
