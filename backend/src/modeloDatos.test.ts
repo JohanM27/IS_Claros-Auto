@@ -27,6 +27,10 @@ const inventoryMigration = readFileSync(
   ),
   'utf8',
 )
+const inventorySecurityMigration = readFileSync(
+  new URL('../prisma/migrations/20261124130000_proteger_inventario/migration.sql', import.meta.url),
+  'utf8',
+)
 const modelData = JSON.parse(
   readFileSync(new URL('../../docs/modelo-datos.json', import.meta.url), 'utf8'),
 ) as {
@@ -106,5 +110,15 @@ describe('modelo Prisma documentado', () => {
     expect(inventoryMigration).toContain('"stockActual" >= 0')
     expect(inventoryMigration).toContain('ON DELETE RESTRICT ON UPDATE CASCADE')
     expect(inventoryMigration).not.toMatch(/ubicaci[oó]n|bodega|estante|gaveta/i)
+  })
+
+  it('protege las tablas de inventario con RLS y niega acceso directo desde la API pública', () => {
+    expect(inventorySecurityMigration).toContain(
+      'ALTER TABLE "CategoriaRepuesto" ENABLE ROW LEVEL SECURITY',
+    )
+    expect(inventorySecurityMigration).toContain('ALTER TABLE "Repuesto" ENABLE ROW LEVEL SECURITY')
+    expect(inventorySecurityMigration).toContain(
+      'REVOKE ALL ON TABLE "CategoriaRepuesto", "Repuesto" FROM anon, authenticated',
+    )
   })
 })

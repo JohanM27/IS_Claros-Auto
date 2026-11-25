@@ -3,7 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { AdminNavigation } from '../components/AdminNavigation'
 import { PageMetadata } from '../components/PageMetadata'
-import { getEmployeeIdentity, type EmployeeIdentity } from '../services/api'
+import { getAdminInventorySummary, type AdminInventorySummary } from '../services/api'
 
 const inventorySections = [
   { title: 'Repuestos', description: 'Catálogo, SKU y disponibilidad.' },
@@ -12,36 +12,37 @@ const inventorySections = [
   { title: 'Movimientos', description: 'Entradas, salidas e historial.' },
 ]
 
+function formatInventoryValue(value: string) {
+  return new Intl.NumberFormat('es-HN', {
+    style: 'currency',
+    currency: 'HNL',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(Number(value))
+}
+
 export function InventoryPage() {
-  const { session, loading, signOut } = useAuth()
+  const { session, employee, employeeLoading, loading, signOut } = useAuth()
   const accessToken = session?.access_token
-  const [identityLookup, setIdentityLookup] = useState<{
+  const [summaryLookup, setSummaryLookup] = useState<{
     accessToken: string
-    employee: EmployeeIdentity | null
+    summary: AdminInventorySummary | null
     error: string
   } | null>(null)
 
   useEffect(() => {
-    if (!accessToken) return
+    if (!accessToken || employeeLoading || !employee) return
+    if (employee.role !== 'ADMINISTRADOR' && employee.role !== 'RECEPCIONISTA') return
     let active = true
-    void getEmployeeIdentity(accessToken)
-      .then((identity) => {
-        if (!active) return
-        if (identity.role !== 'ADMINISTRADOR' && identity.role !== 'RECEPCIONISTA') {
-          setIdentityLookup({
-            accessToken,
-            employee: null,
-            error: 'Esta cuenta no tiene un rol autorizado para consultar el inventario.',
-          })
-          return
-        }
-        setIdentityLookup({ accessToken, employee: identity, error: '' })
+    void getAdminInventorySummary(accessToken)
+      .then((summary) => {
+        if (active) setSummaryLookup({ accessToken, summary, error: '' })
       })
       .catch((cause: unknown) => {
         if (active) {
-          setIdentityLookup({
+          setSummaryLookup({
             accessToken,
-            employee: null,
+            summary: null,
             error: cause instanceof Error ? cause.message : 'No se pudo verificar el rol.',
           })
         }
@@ -50,11 +51,11 @@ export function InventoryPage() {
     return () => {
       active = false
     }
-  }, [accessToken])
+  }, [accessToken, employee, employeeLoading])
 
-  const currentIdentity = identityLookup?.accessToken === accessToken ? identityLookup : null
-  const employee = currentIdentity?.employee ?? null
-  const employeeLoading = Boolean(accessToken && !currentIdentity)
+  const currentSummary = summaryLookup?.accessToken === accessToken ? summaryLookup : null
+  const summary = currentSummary?.summary ?? null
+  const summaryLoading = Boolean(accessToken && employee && !employeeLoading && !currentSummary)
 
   if (loading) return <main className="p-10 text-center">Verificando sesión…</main>
   if (!session)
@@ -73,32 +74,51 @@ export function InventoryPage() {
           <p role="status">Verificando permisos…</p>
         ) : !employee || employee.role === 'MECANICO' ? (
           <p role="alert" className="rounded-md border border-red-300 bg-red-50 p-4 text-red-900">
-            {currentIdentity?.error ||
-              'Esta cuenta no tiene un rol autorizado para consultar el inventario.'}
+            Esta cuenta no tiene un rol autorizado para consultar el inventario.
           </p>
         ) : (
           <>
             <p className="mb-6 text-lg text-slate-600">
               Consulta de repuestos, categorías, proveedores y movimientos del taller.
             </p>
+            {currentSummary?.error && (
+              <p
+                role="alert"
+                className="mb-5 rounded-md border border-red-300 bg-red-50 p-4 text-red-900"
+              >
+                {currentSummary.error}
+              </p>
+            )}
             <section aria-labelledby="inventory-indicators" className="mb-8">
               <h2 id="inventory-indicators" className="mb-4 text-xl font-bold">
                 Indicadores
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
                 {[
-                  'Total de repuestos',
-                  'Productos activos',
-                  'Productos con stock bajo',
-                  'Productos agotados',
-                  ...(employee.role === 'ADMINISTRADOR' ? ['Valor del inventario'] : []),
-                ].map((label) => (
+                  { label: 'Total de repuestos', value: summary?.totalRepuestos },
+                  { label: 'Productos activos', value: summary?.productosActivos },
+                  { label: 'Productos con stock bajo', value: summary?.productosStockBajo },
+                  { label: 'Productos agotados', value: summary?.productosAgotados },
+                  ...(employee.role === 'ADMINISTRADOR'
+                    ? [{ label: 'Valor del inventario', value: summary?.valorInventario }]
+                    : []),
+                ].map(({ label, value }) => (
                   <article
                     key={label}
                     className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
                   >
                     <h3 className="font-semibold">{label}</h3>
-                    <p className="mt-2 text-sm text-slate-500">Pendiente de conectar</p>
+                    <p className="mt-2 text-sm text-slate-500">
+                      {summaryLoading
+                        ? 'Cargando…'
+                        : currentSummary?.error
+                          ? 'No disponible'
+                          : value === undefined
+                            ? '—'
+                            : label === 'Valor del inventario'
+                              ? formatInventoryValue(String(value))
+                              : value}
+                    </p>
                   </article>
                 ))}
               </div>
