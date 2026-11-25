@@ -16,7 +16,10 @@ async function checkDatabase() {
       FROM information_schema.tables
       WHERE table_schema = 'public'
         AND table_type = 'BASE TABLE'
-        AND table_name IN ('Appointment', 'Customer', 'Service', 'Vehicle', 'StaffProfile', 'WorkOrder')
+        AND table_name IN (
+          'Appointment', 'Customer', 'Service', 'Vehicle', 'StaffProfile', 'WorkOrder',
+          'CategoriaRepuesto', 'Repuesto'
+        )
     `
     const presentTables = new Set(tables.map(({ table_name }) => table_name))
     const requiredTables = [
@@ -26,6 +29,8 @@ async function checkDatabase() {
       'Vehicle',
       'StaffProfile',
       'WorkOrder',
+      'CategoriaRepuesto',
+      'Repuesto',
     ]
     const missingTables = requiredTables.filter((table) => !presentTables.has(table))
 
@@ -42,6 +47,30 @@ async function checkDatabase() {
       throw new Error('Row-level security is not enabled for StaffProfile.')
     }
 
+    const inventorySecurity = await prisma.$queryRaw<
+      Array<{ table_name: string; row_level_security: boolean }>
+    >`
+      SELECT c.relname AS table_name, c.relrowsecurity AS row_level_security
+      FROM pg_class c
+      WHERE c.oid IN (
+        'public."CategoriaRepuesto"'::regclass,
+        'public."Repuesto"'::regclass
+      )
+    `
+    const protectedInventoryTables = new Set(
+      inventorySecurity
+        .filter(({ row_level_security }) => row_level_security)
+        .map(({ table_name }) => table_name),
+    )
+    const unprotectedInventoryTables = ['CategoriaRepuesto', 'Repuesto'].filter(
+      (table) => !protectedInventoryTables.has(table),
+    )
+    if (unprotectedInventoryTables.length > 0) {
+      throw new Error(
+        `Row-level security is not enabled for inventory tables: ${unprotectedInventoryTables.join(', ')}.`,
+      )
+    }
+
     const migrations = await prisma.$queryRaw<Array<{ migration_name: string }>>`
       SELECT migration_name
       FROM public."_prisma_migrations"
@@ -50,7 +79,9 @@ async function checkDatabase() {
         '20261119000000_roles_empleados',
         '20261119200000_ordenes_trabajo',
         '20261120100000_registro_ordenes_trabajo',
-        '20261120160000_realtime_citas'
+        '20261120160000_realtime_citas',
+        '20261124120000_inventario_repuestos',
+        '20261124130000_proteger_inventario'
       )
         AND finished_at IS NOT NULL
         AND rolled_back_at IS NULL
@@ -63,6 +94,8 @@ async function checkDatabase() {
       '20261119200000_ordenes_trabajo',
       '20261120100000_registro_ordenes_trabajo',
       '20261120160000_realtime_citas',
+      '20261124120000_inventario_repuestos',
+      '20261124130000_proteger_inventario',
     ]
     const missingMigrations = requiredMigrations.filter(
       (migration) => !appliedMigrations.has(migration),

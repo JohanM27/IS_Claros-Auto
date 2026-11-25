@@ -88,6 +88,20 @@ export type EmployeeIdentity = {
   role: EmployeeRole
   displayName: string | null
 }
+
+export type AdminInventorySummary = {
+  totalRepuestos: number
+  productosActivos: number
+  productosStockBajo: number
+  productosAgotados: number
+  valorInventario?: string
+}
+
+export function getAdminInventorySummary(accessToken: string): Promise<AdminInventorySummary> {
+  return request<AdminInventorySummary>('/admin/inventario/resumen', {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+}
 export type AdminAppointment = {
   id: string
   status: 'PENDIENTE' | 'CONFIRMADA' | 'CANCELADA' | 'COMPLETADA'

@@ -13,6 +13,7 @@ import type { RequestHandler } from 'express'
 import { createAdminRouter } from './modules/admin/admin.routes.js'
 import { crearRutasOrdenesTrabajo } from './modules/ordenesTrabajo/ordenTrabajo.routes.js'
 import { crearRutasRegistrosOrdenTrabajo } from './modules/ordenesTrabajo/ordenTrabajo.registros.routes.js'
+import { crearRutasInventario } from './modules/inventario/inventario.routes.js'
 
 export type ApiDependencies = {
   listarServicios?: Parameters<typeof crearRutasServicios>[0]
@@ -22,6 +23,7 @@ export type ApiDependencies = {
   admin?: Parameters<typeof createAdminRouter>[1]
   ordenesTrabajo?: Parameters<typeof crearRutasOrdenesTrabajo>[1]
   registrosOrdenTrabajo?: Parameters<typeof crearRutasRegistrosOrdenTrabajo>[1]
+  inventario?: Parameters<typeof crearRutasInventario>[1]
 }
 
 export function createApp(dependencies: ApiDependencies = {}) {
@@ -62,6 +64,13 @@ export function createApp(dependencies: ApiDependencies = {}) {
     crearRutasOrdenesTrabajo(
       dependencies.authenticateEmployee ?? authenticateEmployee,
       dependencies.ordenesTrabajo,
+    ),
+  )
+  app.use(
+    '/api/admin/inventario',
+    crearRutasInventario(
+      dependencies.authenticateEmployee ?? authenticateEmployee,
+      dependencies.inventario,
     ),
   )
   app.use(
