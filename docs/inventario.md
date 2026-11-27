@@ -1,61 +1,70 @@
-# Inventario: categorías de repuestos
+# Inventario de repuestos
 
-## Alcance actual
+## Alcance implementado
 
-La pantalla `/admin/inventario/categorias` permite consultar, buscar, filtrar, crear, editar, desactivar y reactivar categorías. La tabla usa paginación del backend de 10 filas por página y muestra el número de repuestos relacionados mediante el conteo de relación de Prisma. No descarga los productos para calcular ese valor.
+El panel `/admin/inventario` muestra el resumen del inventario. Desde allí se administran el catálogo `/admin/inventario/repuestos` y las categorías `/admin/inventario/categorias`. El catálogo de repuestos permite registrar, consultar, buscar, filtrar, paginar, editar, desactivar y reactivar productos mediante la API Express y Prisma conectada a PostgreSQL. No usa datos ficticios ni `localStorage`.
 
-No hay categorías de ejemplo insertadas en Supabase. Una base sin categorías muestra un estado vacío. El formulario crea las categorías que el administrador registre.
+## Registro e identificación
+
+- Nombre y categoría activa son obligatorios. Descripción, marca, número de parte y código de barras son opcionales.
+- El backend obtiene el SKU con `nextval` de `RepuestoSku_seq`, que es seguro ante solicitudes simultáneas. El SKU tiene formato `REP-00001`, es único, no se recibe ni se modifica desde el navegador, y la secuencia no se reinicia al desactivar productos.
+- El alta usa una clave de idempotencia UUID persistida con índice único. Si una solicitud se reintenta con la misma clave, la API devuelve el producto que se creó en el primer intento, incluso si llegaron dos solicitudes concurrentes.
+- El código de barras es texto opcional, conserva ceros iniciales, normaliza vacío a `null` y tiene índice único para valores no nulos. Se puede teclear o capturar con un lector que actúe como teclado. El SKU permanece como identificador alternativo.
+- El número de parte se almacena como texto, no necesita ser único y puede buscarse.
+- Unidades compatibles con el esquema: unidad, litro, galón, mililitro, kilogramo, gramo, metro, juego, par, caja y botella. Las cantidades admiten hasta tres decimales. No se realizan conversiones; cambiar la unidad se rechaza si el producto tiene existencias.
+- Los precios se validan en el servidor y se guardan como `Decimal(12,2)`; el stock mínimo y actual usan `Decimal(12,3)`. El stock se inicia en cero y no se acepta en el formulario ni en el endpoint de edición. No hay ajuste manual ni movimientos en este avance.
+- Para administración, la interfaz calcula ganancia bruta y margen estimados usando importes en centavos. Si el precio de venta queda por debajo del costo muestra una advertencia, sin bloquearlo. En precio de venta cero el margen no aplica. Son estimaciones brutas, no utilidad neta.
+
+## Consulta y búsqueda
+
+El listado presenta SKU, nombre, categoría, marca, número de parte, precio de venta, existencias, unidad, estado y, solo para administración, precio de compra. Permite buscar por nombre, SKU, código de barras, número de parte o marca; el código exacto se prioriza en la primera página. Tiene filtro de categoría, marca y estado para administración; recepción siempre consulta productos activos. La búsqueda espera 250 ms tras la última tecla y la paginación del servidor usa 10 filas por página (máximo 50).
+
+La vista de detalle incluye datos de identificación, inventario y fechas. Costos, ganancia y margen no se seleccionan ni serializan en las respuestas para recepción.
+
+## Edición y estado
+
+El SKU, ID, existencias y fecha de creación no se pueden editar. Cambios de categoría requieren que la categoría esté activa. Costos y precios se validan como decimales no negativos; texto vacío opcional se guarda como `null`. Prisma actualiza la fecha de modificación. No se reescriben importes de órdenes ni registros históricos.
+
+La baja es lógica; no se borra el producto. El backend rechaza desactivar si el stock es mayor que cero. Reactivar exige categoría activa. Se pide confirmación en la interfaz y los productos conservan SKU y datos al estar inactivos.
 
 ## Endpoints
 
-Todas las rutas se publican bajo `/api/admin/inventario/categorias` y requieren `Authorization: Bearer <access-token>`.
+Las rutas están bajo `/api/admin/inventario` y requieren un token Bearer de Supabase.
 
-| Método  | Ruta          | Acceso                       | Propósito                                                                           |
-| ------- | ------------- | ---------------------------- | ----------------------------------------------------------------------------------- |
-| `GET`   | `/`           | Administrador, recepcionista | Buscar, filtrar por estado y paginar; orden alfabético.                             |
-| `GET`   | `/:id`        | Administrador, recepcionista | Consultar una categoría y su conteo de repuestos. Recepción solo puede ver activas. |
-| `POST`  | `/`           | Administrador                | Crear una categoría activa.                                                         |
-| `PATCH` | `/:id`        | Administrador                | Cambiar el nombre o la descripción.                                                 |
-| `PATCH` | `/:id/estado` | Administrador                | Desactivar o reactivar con `{ "activo": boolean }`.                                 |
+| Método | Ruta                    | Acceso                       | Uso                                              |
+| ------ | ----------------------- | ---------------------------- | ------------------------------------------------ |
+| GET    | `/repuestos`            | Administrador, recepcionista | Búsqueda, filtros y paginación                   |
+| GET    | `/repuestos/:id`        | Administrador, recepcionista | Detalle; recepción solo encuentra activos        |
+| POST   | `/repuestos`            | Administrador                | Crear; genera SKU y stock inicial cero           |
+| PATCH  | `/repuestos/:id`        | Administrador                | Editar campos permitidos                         |
+| PATCH  | `/repuestos/:id/estado` | Administrador                | Desactivar/reactivar con `{ "activo": boolean }` |
 
-El listado acepta `q`, `estado` (`TODAS`, `ACTIVAS` o `INACTIVAS`), `page` y `pageSize`. El tamaño predeterminado es 10 y el máximo permitido es 50. Recepción siempre recibe categorías activas, aunque intente solicitar otro estado.
-
-## Validación y reglas
-
-- El nombre es obligatorio, tiene un máximo de 150 caracteres y se guarda sin espacios iniciales/finales ni repeticiones internas.
-- La clave única `nombreNormalizado` usa normalización Unicode, espacios compactados y minúsculas para impedir duplicados por mayúsculas/minúsculas o solicitudes concurrentes. PostgreSQL aplica la restricción única.
-- La descripción es opcional y admite hasta 1,000 caracteres.
-- No se permite la eliminación física. La desactivación conserva datos y relaciones.
-- No se desactiva una categoría mientras tenga repuestos activos.
-- La transición de estado usa transacción serializable y bloquea la fila de categoría antes de comprobar los repuestos activos.
-- Las futuras operaciones de registro de repuestos deben llamar `validarCategoriaActivaParaRepuesto` dentro de la misma transacción que crea el repuesto. El bloqueo compartido impide asignar un producto nuevo a una categoría que se desactiva simultáneamente.
-- Reacción y edición mantienen el identificador y las relaciones existentes; Prisma actualiza `fechaActualizacion`.
+La lista acepta `q`, `categoriaId`, `marca`, `estado` (`TODOS`, `ACTIVOS`, `INACTIVOS`), `page` y `pageSize`. En respuestas a recepción se omiten costos de compra.
 
 ## Roles
 
-| Operación                             | Administrador | Recepcionista | Mecánico |
-| ------------------------------------- | ------------- | ------------- | -------- |
-| Consultar categorías activas          | Sí            | Sí            | No       |
-| Consultar categorías inactivas        | Sí            | No            | No       |
-| Crear, editar, desactivar o reactivar | Sí            | No            | No       |
+| Operación                                                 | Administrador | Recepcionista | Mecánico |
+| --------------------------------------------------------- | ------------- | ------------- | -------- |
+| Consultar productos activos, buscar y ver precio de venta | Sí            | Sí            | No       |
+| Ver costo de compra, margen o ganancia estimada           | Sí            | No            | No       |
+| Crear o editar productos y establecer precios             | Sí            | No            | No       |
+| Desactivar o reactivar                                    | Sí            | No            | No       |
 
-La API valida los roles; ocultar acciones en React no sustituye la autorización del backend. Las tablas privadas conservan RLS y privilegios revocados para `anon` y `authenticated`; la API usa la conexión PostgreSQL del servidor.
+Express vuelve a validar autenticación y rol en cada operación; la interfaz solo adapta la presentación. No se crean cuentas de mecánicos.
 
 ## Esquema y migraciones
 
-Esta funcionalidad reutiliza `CategoriaRepuesto` y la relación `CategoriaRepuesto.repuestos` existente. No requiere cambios al esquema Prisma ni una migración nueva: `nombreNormalizado` ya es único, la fecha de modificación usa `@updatedAt` y existe un índice por estado/nombre. La migración de inventario existente es `20261124120000_inventario_repuestos`; la protección RLS está en `20261124130000_proteger_inventario`.
-
-No se ejecutaron migraciones ni escrituras de prueba en Supabase durante este avance.
+El avance reutiliza `Repuesto`, `CategoriaRepuesto`, `UnidadMedidaRepuesto`, la secuencia y restricciones creadas por `20261124120000_inventario_repuestos`, además de la protección RLS de `20261124130000_proteger_inventario`. Añade una columna nullable de clave idempotente con índice único mediante la migración aditiva `20261126120000_idempotencia_repuestos`; conserva todas las filas existentes y no modifica migraciones anteriores. La migración está preparada, pero no se ejecutó contra Supabase. Tampoco se escribió/consultó la base productiva desde las pruebas. La persistencia real debe confirmarse en el entorno configurado por el usuario.
 
 ## Verificaciones
 
-Desde la raíz del proyecto:
+Desde la raíz:
 
 ```powershell
-npm test -- backend/src/modules/inventario
+npm test -- backend/src/modules/inventario frontend/src/pages/InventoryPartsPage.test.tsx
 npm run lint
 npm --prefix backend run db:validate
 npm run build
 ```
 
-Las pruebas del módulo usan dependencias controladas y no escriben en la base de datos real. Una prueba de persistencia extremo a extremo requiere una base aislada de pruebas; no se debe apuntar la suite de escritura a la base de producción.
+La suite usa dependencias controladas y no ejecuta escrituras en Supabase. Una prueba de persistencia y concurrencia real requiere una base de pruebas separada y aislada, no producción.

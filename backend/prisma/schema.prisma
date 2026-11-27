@@ -57,6 +57,7 @@ model CategoriaRepuesto {
 
 model Repuesto {
   id                 String               @id @default(uuid()) @db.Uuid
+  claveIdempotencia  String?              @unique @db.Uuid
   sku                String               @unique @db.VarChar(20)
   codigoBarras       String?              @unique @db.VarChar(80)
   nombre             String               @db.VarChar(180)

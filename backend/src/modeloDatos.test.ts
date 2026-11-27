@@ -31,6 +31,13 @@ const inventorySecurityMigration = readFileSync(
   new URL('../prisma/migrations/20261124130000_proteger_inventario/migration.sql', import.meta.url),
   'utf8',
 )
+const inventoryIdempotencyMigration = readFileSync(
+  new URL(
+    '../prisma/migrations/20261126120000_idempotencia_repuestos/migration.sql',
+    import.meta.url,
+  ),
+  'utf8',
+)
 const modelData = JSON.parse(
   readFileSync(new URL('../../docs/modelo-datos.json', import.meta.url), 'utf8'),
 ) as {
@@ -119,6 +126,13 @@ describe('modelo Prisma documentado', () => {
     expect(inventorySecurityMigration).toContain('ALTER TABLE "Repuesto" ENABLE ROW LEVEL SECURITY')
     expect(inventorySecurityMigration).toContain(
       'REVOKE ALL ON TABLE "CategoriaRepuesto", "Repuesto" FROM anon, authenticated',
+    )
+  })
+
+  it('agrega idempotencia de forma segura para los repuestos existentes', () => {
+    expect(inventoryIdempotencyMigration).toContain('ADD COLUMN "claveIdempotencia" UUID')
+    expect(inventoryIdempotencyMigration).toContain(
+      'CREATE UNIQUE INDEX "Repuesto_claveIdempotencia_key"',
     )
   })
 })

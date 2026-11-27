@@ -6,7 +6,11 @@ import { PageMetadata } from '../components/PageMetadata'
 import { getAdminInventorySummary, type AdminInventorySummary } from '../services/api'
 
 const inventorySections = [
-  { title: 'Repuestos', description: 'Catálogo, SKU y disponibilidad.', to: null },
+  {
+    title: 'Repuestos',
+    description: 'Catálogo, SKU y disponibilidad.',
+    to: '/admin/inventario/repuestos',
+  },
   {
     title: 'Categorías',
     description: 'Organización de repuestos.',
@@ -142,7 +146,9 @@ export function InventoryPage() {
                     <p className="mt-4 text-sm font-semibold text-slate-500">
                       {to ? (
                         <Link className="text-blue-700 underline" to={to}>
-                          Administrar categorías
+                          {title === 'Repuestos'
+                            ? 'Administrar repuestos'
+                            : 'Administrar categorías'}
                         </Link>
                       ) : (
                         'Disponible en un siguiente avance'

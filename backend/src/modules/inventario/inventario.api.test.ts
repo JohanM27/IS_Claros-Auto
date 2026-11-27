@@ -95,6 +95,201 @@ function categoryAppFor(
   return { app, functions }
 }
 
+const part = {
+  id: 'a4f76ce5-b2ee-4d3e-b8b1-d85768831e6d',
+  sku: 'REP-00001',
+  codigoBarras: '001234',
+  nombre: 'Filtro de aceite',
+  descripcion: null,
+  categoriaId: category.id,
+  categoria: { id: category.id, nombre: category.nombre, activo: true },
+  marca: 'ACME',
+  numeroParte: '001-A',
+  unidadMedida: 'UNIDAD',
+  precioVenta: '180.00',
+  stockActual: '0.000',
+  stockMinimo: '2.000',
+  activo: true,
+  fechaCreacion: new Date('2026-11-24T12:00:00.000Z'),
+  fechaActualizacion: new Date('2026-11-24T12:00:00.000Z'),
+}
+
+function partsAppFor(
+  role: 'ADMINISTRADOR' | 'RECEPCIONISTA' | 'MECANICO' | null,
+  overrides: Record<string, ReturnType<typeof vi.fn>> = {},
+) {
+  const functions = {
+    listParts: vi.fn(async (_filters, includeCosts: boolean) => ({
+      data: [includeCosts ? { ...part, precioCompra: '125.50' } : part],
+      pagination: { page: 1, pageSize: 10, total: 1, totalPages: 1 },
+    })),
+    getPart: vi.fn(async (_id: string, includeCosts: boolean) =>
+      includeCosts ? { ...part, precioCompra: '125.50' } : part,
+    ),
+    createPart: vi.fn(async () => ({ ...part, precioCompra: '125.50' })),
+    updatePart: vi.fn(async () => ({ ...part, precioCompra: '125.50' })),
+    setPartActive: vi.fn(async (_id: string, activo: boolean) => ({
+      ...part,
+      activo,
+      precioCompra: '125.50',
+    })),
+    ...overrides,
+  }
+  const app = createApp({
+    authenticateEmployee: (request, _response, next) => {
+      if (role) request.employeeIdentity = { userId, email: null, displayName: null, role }
+      next()
+    },
+    inventario: functions,
+  })
+  return { app, functions }
+}
+
+describe('API de repuestos de inventario', () => {
+  it('lista y pagina repuestos, dando prioridad a permisos de costo del administrador', async () => {
+    const admin = partsAppFor('ADMINISTRADOR')
+    const response = await request(admin.app).get(
+      '/api/admin/inventario/repuestos?q=REP-00001&page=2',
+    )
+    expect(response.status).toBe(200)
+    expect(response.body.data[0].precioCompra).toBe('125.50')
+    expect(response.body.pagination.page).toBe(1)
+    expect(admin.functions.listParts).toHaveBeenCalledWith(
+      {
+        q: 'REP-00001',
+        categoriaId: undefined,
+        marca: undefined,
+        estado: 'ACTIVOS',
+        page: 2,
+        pageSize: 10,
+      },
+      true,
+      false,
+    )
+  })
+
+  it('limita recepción a productos activos y no devuelve campos de costos', async () => {
+    const receptionist = partsAppFor('RECEPCIONISTA')
+    const response = await request(receptionist.app).get(
+      '/api/admin/inventario/repuestos?estado=INACTIVOS',
+    )
+    expect(response.status).toBe(200)
+    expect(response.body.data[0].precioCompra).toBeUndefined()
+    expect(receptionist.functions.listParts).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 'INACTIVOS' }),
+      false,
+      true,
+    )
+  })
+
+  it('rechaza filtros inválidos y perfiles sin permisos de lectura', async () => {
+    const admin = partsAppFor('ADMINISTRADOR')
+    const mechanic = partsAppFor('MECANICO')
+    const anonymous = partsAppFor(null)
+    expect(
+      (await request(admin.app).get('/api/admin/inventario/repuestos?pageSize=100')).status,
+    ).toBe(400)
+    expect((await request(mechanic.app).get('/api/admin/inventario/repuestos')).status).toBe(403)
+    expect((await request(anonymous.app).get('/api/admin/inventario/repuestos')).status).toBe(401)
+  })
+
+  it('consulta detalle con UUID válido y oculta productos inactivos a recepción', async () => {
+    const admin = partsAppFor('ADMINISTRADOR')
+    expect(
+      (await request(admin.app).get(`/api/admin/inventario/repuestos/${part.id}`)).body.data
+        .precioCompra,
+    ).toBe('125.50')
+    expect((await request(admin.app).get('/api/admin/inventario/repuestos/no-valido')).status).toBe(
+      400,
+    )
+    const hidden = partsAppFor('RECEPCIONISTA', { getPart: vi.fn(async () => null) })
+    expect(
+      (await request(hidden.app).get(`/api/admin/inventario/repuestos/${part.id}`)).status,
+    ).toBe(404)
+  })
+
+  it('registra sin aceptar SKU ni existencias desde el cliente', async () => {
+    const admin = partsAppFor('ADMINISTRADOR')
+    const input = {
+      claveIdempotencia: '1218d43a-1e71-4f80-aef0-227d53d52968',
+      nombre: 'Filtro',
+      categoriaId: category.id,
+      precioCompra: '12.50',
+      precioVenta: '19.99',
+    }
+    const saved = await request(admin.app).post('/api/admin/inventario/repuestos').send(input)
+    const injectedStock = await request(admin.app)
+      .post('/api/admin/inventario/repuestos')
+      .send({ ...input, stockActual: '5' })
+    const injectedSku = await request(admin.app)
+      .post('/api/admin/inventario/repuestos')
+      .send({ ...input, sku: 'REP-99999' })
+    expect(saved.status).toBe(201)
+    expect(saved.body.data.sku).toBe('REP-00001')
+    expect(admin.functions.createPart).toHaveBeenCalledWith(
+      expect.objectContaining({
+        claveIdempotencia: '1218d43a-1e71-4f80-aef0-227d53d52968',
+        precioCompra: '12.50',
+      }),
+    )
+    expect(injectedStock.status).toBe(400)
+    expect(injectedSku.status).toBe(400)
+    expect(admin.functions.createPart).toHaveBeenCalledTimes(1)
+  })
+
+  it('no permite alta a recepción ni a perfiles no autorizados', async () => {
+    const receptionist = partsAppFor('RECEPCIONISTA')
+    const mechanic = partsAppFor('MECANICO')
+    expect(
+      (await request(receptionist.app).post('/api/admin/inventario/repuestos').send({})).status,
+    ).toBe(403)
+    expect(
+      (await request(mechanic.app).post('/api/admin/inventario/repuestos').send({})).status,
+    ).toBe(403)
+  })
+
+  it('edita solo campos permitidos y bloquea cambios de SKU y stock', async () => {
+    const admin = partsAppFor('ADMINISTRADOR')
+    const updated = await request(admin.app)
+      .patch(`/api/admin/inventario/repuestos/${part.id}`)
+      .send({ precioVenta: '199.99' })
+    const sku = await request(admin.app)
+      .patch(`/api/admin/inventario/repuestos/${part.id}`)
+      .send({ sku: 'REP-00002' })
+    const stock = await request(admin.app)
+      .patch(`/api/admin/inventario/repuestos/${part.id}`)
+      .send({ stockActual: '4' })
+    expect(updated.status).toBe(200)
+    expect(admin.functions.updatePart).toHaveBeenCalledWith(
+      part.id,
+      { precioVenta: '199.99' },
+      true,
+    )
+    expect(sku.status).toBe(400)
+    expect(stock.status).toBe(400)
+  })
+
+  it('desactiva y reactiva productos mediante el endpoint protegido', async () => {
+    const admin = partsAppFor('ADMINISTRADOR')
+    const inactive = await request(admin.app)
+      .patch(`/api/admin/inventario/repuestos/${part.id}/estado`)
+      .send({ activo: false })
+    const active = await request(admin.app)
+      .patch(`/api/admin/inventario/repuestos/${part.id}/estado`)
+      .send({ activo: true })
+    const denied = partsAppFor('RECEPCIONISTA')
+    expect(inactive.body.data.activo).toBe(false)
+    expect(active.body.data.activo).toBe(true)
+    expect(
+      (
+        await request(denied.app)
+          .patch(`/api/admin/inventario/repuestos/${part.id}/estado`)
+          .send({ activo: false })
+      ).status,
+    ).toBe(403)
+  })
+})
+
 describe('API de categorías de inventario', () => {
   it('crea categorías con respuesta 201 para administración', async () => {
     const { app, functions } = categoryAppFor('ADMINISTRADOR')
