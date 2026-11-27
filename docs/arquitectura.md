@@ -54,6 +54,8 @@ C4Container
 - `backend/src/modules/citas`: validación Zod, rutas, controladores, lógica de token y persistencia.
 - `frontend/src/pages/AdminPage.tsx`: carga las citas en paralelo con la verificación de perfil y actualiza la lista con avisos privados de Realtime.
 - `backend/src/modules/ordenesTrabajo`: consulta administrativa de órdenes protegida por rol.
+- `backend/src/modules/inventario`: resumen y administración protegida de categorías de repuestos.
+- `frontend/src/pages/InventoryCategoriesPage.tsx`: consulta y gestión administrativa de categorías de inventario.
 - `backend/src/middleware/errorHandler.ts`: formato común de errores sin detalles internos.
 - `backend/prisma/schema.prisma`: esquema relacional fuente.
 - `backend/prisma/migrations`: migraciones versionadas.
@@ -137,18 +139,25 @@ El archivo [modelo-datos.json](modelo-datos.json) representa los mismos modelos,
 
 ## Endpoints
 
-| Método y ruta                       | Función                                                  | Respuesta principal                                |
-| ----------------------------------- | -------------------------------------------------------- | -------------------------------------------------- |
-| `GET /api/health`                   | Verifica que la API está activa. No consulta PostgreSQL. | `200 { status: "ok", service: "claros-auto-api" }` |
-| `GET /api/servicios`                | Devuelve servicios activos, sin datos privados.          | `200 { data: [...] }`                              |
-| `POST /api/citas`                   | Valida y guarda una solicitud con estado `PENDIENTE`.    | `201 { data: { id, status, lookupToken, ... } }`   |
-| `GET /api/citas/:id`                | Devuelve estado, fechas y servicio de una cita.          | `200 { data: ... }`                                |
-| `GET /api/auth/me`                  | Verifica sesión e identidad de empleado.                 | `200 { data: ... }`                                |
-| `GET /api/admin/citas`              | Lista citas para recepción y administración.             | `200 { data: [...] }`                              |
-| `PATCH /api/admin/citas/:id/estado` | Confirma o cancela una cita pendiente.                   | `200 { data: ... }`                                |
-| `GET /api/admin/ordenes`            | Lista órdenes para administración y recepción.           | `200 { data: [...] }`                              |
+| Método y ruta                                       | Función                                                      | Respuesta principal                                |
+| --------------------------------------------------- | ------------------------------------------------------------ | -------------------------------------------------- |
+| `GET /api/health`                                   | Verifica que la API está activa. No consulta PostgreSQL.     | `200 { status: "ok", service: "claros-auto-api" }` |
+| `GET /api/servicios`                                | Devuelve servicios activos, sin datos privados.              | `200 { data: [...] }`                              |
+| `POST /api/citas`                                   | Valida y guarda una solicitud con estado `PENDIENTE`.        | `201 { data: { id, status, lookupToken, ... } }`   |
+| `GET /api/citas/:id`                                | Devuelve estado, fechas y servicio de una cita.              | `200 { data: ... }`                                |
+| `GET /api/auth/me`                                  | Verifica sesión e identidad de empleado.                     | `200 { data: ... }`                                |
+| `GET /api/admin/citas`                              | Lista citas para recepción y administración.                 | `200 { data: [...] }`                              |
+| `PATCH /api/admin/citas/:id/estado`                 | Confirma o cancela una cita pendiente.                       | `200 { data: ... }`                                |
+| `GET /api/admin/ordenes`                            | Lista órdenes para administración y recepción.               | `200 { data: [...] }`                              |
+| `GET /api/admin/inventario/categorias`              | Lista categorías activas o todas, con búsqueda y paginación. | `200 { data: [...], pagination }`                  |
+| `GET /api/admin/inventario/categorias/:id`          | Consulta una categoría y su cantidad de repuestos.           | `200 { data: {...} }`                              |
+| `POST /api/admin/inventario/categorias`             | Crea una categoría activa (solo administración).             | `201 { data: {...} }`                              |
+| `PATCH /api/admin/inventario/categorias/:id`        | Actualiza nombre o descripción (solo administración).        | `200 { data: {...} }`                              |
+| `PATCH /api/admin/inventario/categorias/:id/estado` | Desactiva o reactiva (solo administración).                  | `200 { data: {...} }`                              |
 
 `GET /api/citas/:id` requiere `Authorization: Bearer <lookupToken>`. Un token faltante o mal formado responde `401`; un token no coincidente devuelve `404` para no confirmar si existe la cita. Ningún endpoint ofrece un listado público de citas. Las respuestas de consulta usan `Cache-Control: no-store`.
+
+La gestión de categorías, sus permisos y la regla transaccional de desactivación están descritos en [inventario.md](inventario.md). El módulo consulta el conteo de repuestos con `_count` de Prisma sin descargar el catálogo completo.
 
 ## Migraciones y configuración
 

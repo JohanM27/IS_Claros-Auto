@@ -97,10 +97,85 @@ export type AdminInventorySummary = {
   valorInventario?: string
 }
 
+export type InventoryCategory = {
+  id: string
+  nombre: string
+  descripcion: string | null
+  activo: boolean
+  fechaCreacion: string
+  fechaActualizacion: string
+  _count: { repuestos: number }
+}
+
+export type InventoryCategoryFilters = {
+  q?: string
+  estado?: 'TODAS' | 'ACTIVAS' | 'INACTIVAS'
+  page?: number
+  pageSize?: number
+}
+
+export type InventoryCategoryPage = {
+  data: InventoryCategory[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+
+export type InventoryCategoryInput = { nombre: string; descripcion: string | null }
+
 export function getAdminInventorySummary(accessToken: string): Promise<AdminInventorySummary> {
   return request<AdminInventorySummary>('/admin/inventario/resumen', {
     headers: { Authorization: `Bearer ${accessToken}` },
   })
+}
+
+export function getInventoryCategories(
+  accessToken: string,
+  filters: InventoryCategoryFilters = {},
+) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  const search = query.size > 0 ? `?${query.toString()}` : ''
+  return authenticatedRequest<InventoryCategoryPage>(
+    `/admin/inventario/categorias${search}`,
+    accessToken,
+    undefined,
+    true,
+  )
+}
+
+export function getInventoryCategory(accessToken: string, id: string) {
+  return authenticatedRequest<InventoryCategory>(
+    `/admin/inventario/categorias/${encodeURIComponent(id)}`,
+    accessToken,
+  )
+}
+
+export function createInventoryCategory(accessToken: string, input: InventoryCategoryInput) {
+  return authenticatedRequest<InventoryCategory>('/admin/inventario/categorias', accessToken, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function updateInventoryCategory(
+  accessToken: string,
+  id: string,
+  input: Partial<InventoryCategoryInput>,
+) {
+  return authenticatedRequest<InventoryCategory>(
+    `/admin/inventario/categorias/${encodeURIComponent(id)}`,
+    accessToken,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  )
+}
+
+export function setInventoryCategoryActive(accessToken: string, id: string, activo: boolean) {
+  return authenticatedRequest<InventoryCategory>(
+    `/admin/inventario/categorias/${encodeURIComponent(id)}/estado`,
+    accessToken,
+    { method: 'PATCH', body: JSON.stringify({ activo }) },
+  )
 }
 export type AdminAppointment = {
   id: string

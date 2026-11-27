@@ -26,6 +26,37 @@ export function normalizarNombreCategoria(nombre: string) {
   return nombre.trim().normalize('NFKC').replace(/\s+/g, ' ').toLocaleLowerCase('es')
 }
 
+const descripcionCategoriaSchema = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? null : value),
+  z.string().trim().max(1000).nullable().optional(),
+)
+
+export const nuevaCategoriaSchema = z
+  .object({
+    nombre: nombreCategoriaSchema,
+    descripcion: descripcionCategoriaSchema,
+  })
+  .strict()
+
+export const actualizarCategoriaSchema = z
+  .object({
+    nombre: nombreCategoriaSchema.optional(),
+    descripcion: descripcionCategoriaSchema,
+  })
+  .strict()
+  .refine((value) => value.nombre !== undefined || value.descripcion !== undefined)
+
+export const estadoCategoriaSchema = z.object({ activo: z.boolean() }).strict()
+
+export const filtrosCategoriasSchema = z
+  .object({
+    q: z.string().trim().max(150).optional(),
+    estado: z.enum(['TODAS', 'ACTIVAS', 'INACTIVAS']).default('TODAS'),
+    page: z.coerce.number().int().min(1).max(10000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  })
+  .strict()
+
 const currencySchema = z
   .string()
   .regex(/^\d{1,10}(?:\.\d{1,2})?$/, 'Usa un importe no negativo con hasta dos decimales.')

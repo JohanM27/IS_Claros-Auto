@@ -8,6 +8,7 @@ import { NotFoundPage } from './pages/NotFoundPage'
 import { ServicesPage } from './pages/ServicesPage'
 import { WorkOrdersPage } from './pages/WorkOrdersPage'
 import { InventoryPage } from './pages/InventoryPage'
+import { InventoryCategoriesPage } from './pages/InventoryCategoriesPage'
 
 export function App() {
   return (
@@ -18,6 +19,7 @@ export function App() {
       <Route path="/admin/ordenes/nueva" element={<WorkOrdersPage />} />
       <Route path="/admin/ordenes/:id" element={<WorkOrdersPage />} />
       <Route path="/admin/inventario" element={<InventoryPage />} />
+      <Route path="/admin/inventario/categorias" element={<InventoryCategoriesPage />} />
       <Route element={<PublicLayout />}>
         <Route path="/" element={<HomePage />} />
         <Route path="/servicios" element={<ServicesPage />} />

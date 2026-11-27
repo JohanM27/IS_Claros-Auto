@@ -1,15 +1,19 @@
 import { useEffect, useState } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Link, Navigate } from 'react-router-dom'
 import { useAuth } from '../auth/AuthContext'
 import { AdminNavigation } from '../components/AdminNavigation'
 import { PageMetadata } from '../components/PageMetadata'
 import { getAdminInventorySummary, type AdminInventorySummary } from '../services/api'
 
 const inventorySections = [
-  { title: 'Repuestos', description: 'Catálogo, SKU y disponibilidad.' },
-  { title: 'Categorías', description: 'Organización de repuestos.' },
-  { title: 'Proveedores', description: 'Directorio de proveedores.' },
-  { title: 'Movimientos', description: 'Entradas, salidas e historial.' },
+  { title: 'Repuestos', description: 'Catálogo, SKU y disponibilidad.', to: null },
+  {
+    title: 'Categorías',
+    description: 'Organización de repuestos.',
+    to: '/admin/inventario/categorias',
+  },
+  { title: 'Proveedores', description: 'Directorio de proveedores.', to: null },
+  { title: 'Movimientos', description: 'Entradas, salidas e historial.', to: null },
 ]
 
 function formatInventoryValue(value: string) {
@@ -128,7 +132,7 @@ export function InventoryPage() {
                 Secciones del inventario
               </h2>
               <div className="grid gap-4 sm:grid-cols-2">
-                {inventorySections.map(({ title, description }) => (
+                {inventorySections.map(({ title, description, to }) => (
                   <article
                     key={title}
                     className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
@@ -136,7 +140,13 @@ export function InventoryPage() {
                     <h3 className="text-lg font-bold">{title}</h3>
                     <p className="mt-1 text-slate-600">{description}</p>
                     <p className="mt-4 text-sm font-semibold text-slate-500">
-                      Disponible en un siguiente avance
+                      {to ? (
+                        <Link className="text-blue-700 underline" to={to}>
+                          Administrar categorías
+                        </Link>
+                      ) : (
+                        'Disponible en un siguiente avance'
+                      )}
                     </p>
                   </article>
                 ))}

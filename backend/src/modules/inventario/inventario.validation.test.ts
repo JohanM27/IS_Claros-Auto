@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { normalizarNombreCategoria, nuevoRepuestoSchema } from './inventario.validation.js'
+import {
+  actualizarCategoriaSchema,
+  filtrosCategoriasSchema,
+  normalizarNombreCategoria,
+  nuevaCategoriaSchema,
+  nuevoRepuestoSchema,
+} from './inventario.validation.js'
 
 const validPart = {
   nombre: 'Filtro de aceite',
@@ -29,5 +35,33 @@ describe('validaciones iniciales de inventario', () => {
     expect(parsed.unidadMedida).toBe('UNIDAD')
     expect(parsed.stockMinimo).toBe('0')
     expect(nuevoRepuestoSchema.safeParse({ ...validPart, stockActual: '8' }).success).toBe(false)
+  })
+
+  it('limpia el nombre y hace equivalentes mayúsculas, Unicode y espacios repetidos', () => {
+    const first = nuevaCategoriaSchema.parse({ nombre: '  Filtros   de ACEITE ' })
+    const second = nuevaCategoriaSchema.parse({ nombre: 'filtros de aceite' })
+
+    expect(first.nombre).toBe('Filtros   de ACEITE')
+    expect(normalizarNombreCategoria(first.nombre)).toBe(normalizarNombreCategoria(second.nombre))
+  })
+
+  it('rechaza nombres vacíos, campos extra y descripciones demasiado largas', () => {
+    expect(nuevaCategoriaSchema.safeParse({ nombre: '   ' }).success).toBe(false)
+    expect(nuevaCategoriaSchema.safeParse({ nombre: 'Frenos', activo: false }).success).toBe(false)
+    expect(
+      nuevaCategoriaSchema.safeParse({ nombre: 'Frenos', descripcion: 'x'.repeat(1001) }).success,
+    ).toBe(false)
+  })
+
+  it('permite editar nombre o descripción y rechaza un cambio vacío', () => {
+    expect(actualizarCategoriaSchema.safeParse({ nombre: 'Frenos' }).success).toBe(true)
+    expect(actualizarCategoriaSchema.safeParse({ descripcion: null }).success).toBe(true)
+    expect(actualizarCategoriaSchema.safeParse({}).success).toBe(false)
+  })
+
+  it('valida filtros y usa diez elementos por página de forma predeterminada', () => {
+    expect(filtrosCategoriasSchema.parse({}).pageSize).toBe(10)
+    expect(filtrosCategoriasSchema.safeParse({ estado: 'ELIMINADAS' }).success).toBe(false)
+    expect(filtrosCategoriasSchema.safeParse({ page: '0' }).success).toBe(false)
   })
 })

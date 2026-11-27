@@ -31,8 +31,11 @@ export function AdminNavigation({ title, employee, onSignOut }: AdminNavigationP
         <NavLink to="/admin/ordenes" className={linkClassName}>
           Órdenes de trabajo
         </NavLink>
-        <NavLink to="/admin/inventario" className={linkClassName}>
+        <NavLink to="/admin/inventario" end className={linkClassName}>
           Inventario
+        </NavLink>
+        <NavLink to="/admin/inventario/categorias" className={linkClassName}>
+          Categorías
         </NavLink>
         <Link className="ml-2 rounded-md border border-slate-300 px-4 py-2 font-semibold" to="/">
           Ver sitio
