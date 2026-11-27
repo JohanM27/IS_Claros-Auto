@@ -121,6 +121,51 @@ export type InventoryCategoryPage = {
 
 export type InventoryCategoryInput = { nombre: string; descripcion: string | null }
 
+export type InventoryPart = {
+  id: string
+  sku: string
+  codigoBarras: string | null
+  nombre: string
+  descripcion: string | null
+  categoriaId: string
+  categoria: { id: string; nombre: string; activo: boolean }
+  marca: string | null
+  numeroParte: string | null
+  unidadMedida: string
+  precioCompra?: string
+  precioVenta: string
+  stockActual: string
+  stockMinimo: string
+  activo: boolean
+  fechaCreacion: string
+  fechaActualizacion: string
+}
+
+export type InventoryPartFilters = {
+  q?: string
+  categoriaId?: string
+  marca?: string
+  estado?: 'TODOS' | 'ACTIVOS' | 'INACTIVOS'
+  page?: number
+  pageSize?: number
+}
+export type InventoryPartPage = {
+  data: InventoryPart[]
+  pagination: { page: number; pageSize: number; total: number; totalPages: number }
+}
+export type InventoryPartInput = {
+  codigoBarras: string | null
+  nombre: string
+  descripcion: string | null
+  categoriaId: string
+  marca: string | null
+  numeroParte: string | null
+  unidadMedida: string
+  precioCompra: string
+  precioVenta: string
+  stockMinimo: string
+}
+
 export function getAdminInventorySummary(accessToken: string): Promise<AdminInventorySummary> {
   return request<AdminInventorySummary>('/admin/inventario/resumen', {
     headers: { Authorization: `Bearer ${accessToken}` },
@@ -173,6 +218,58 @@ export function updateInventoryCategory(
 export function setInventoryCategoryActive(accessToken: string, id: string, activo: boolean) {
   return authenticatedRequest<InventoryCategory>(
     `/admin/inventario/categorias/${encodeURIComponent(id)}/estado`,
+    accessToken,
+    { method: 'PATCH', body: JSON.stringify({ activo }) },
+  )
+}
+
+export function getInventoryParts(accessToken: string, filters: InventoryPartFilters = {}) {
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== undefined && value !== '') query.set(key, String(value))
+  }
+  const search = query.size ? `?${query.toString()}` : ''
+  return authenticatedRequest<InventoryPartPage>(
+    `/admin/inventario/repuestos${search}`,
+    accessToken,
+    undefined,
+    true,
+  )
+}
+
+export function getInventoryPart(accessToken: string, id: string) {
+  return authenticatedRequest<InventoryPart>(
+    `/admin/inventario/repuestos/${encodeURIComponent(id)}`,
+    accessToken,
+  )
+}
+
+export function createInventoryPart(
+  accessToken: string,
+  input: InventoryPartInput,
+  claveIdempotencia: string,
+) {
+  return authenticatedRequest<InventoryPart>('/admin/inventario/repuestos', accessToken, {
+    method: 'POST',
+    body: JSON.stringify({ ...input, claveIdempotencia }),
+  })
+}
+
+export function updateInventoryPart(
+  accessToken: string,
+  id: string,
+  input: Partial<InventoryPartInput>,
+) {
+  return authenticatedRequest<InventoryPart>(
+    `/admin/inventario/repuestos/${encodeURIComponent(id)}`,
+    accessToken,
+    { method: 'PATCH', body: JSON.stringify(input) },
+  )
+}
+
+export function setInventoryPartActive(accessToken: string, id: string, activo: boolean) {
+  return authenticatedRequest<InventoryPart>(
+    `/admin/inventario/repuestos/${encodeURIComponent(id)}/estado`,
     accessToken,
     { method: 'PATCH', body: JSON.stringify({ activo }) },
   )

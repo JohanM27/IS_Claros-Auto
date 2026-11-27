@@ -118,6 +118,7 @@
       "table": "Repuesto",
       "fields": [
         { "name": "id", "type": "String" },
+        { "name": "claveIdempotencia", "type": "String" },
         { "name": "sku", "type": "String" },
         { "name": "codigoBarras", "type": "String" },
         { "name": "nombre", "type": "String" },

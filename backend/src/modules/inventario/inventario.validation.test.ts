@@ -1,13 +1,16 @@
 import { describe, expect, it } from 'vitest'
 import {
   actualizarCategoriaSchema,
+  actualizarRepuestoSchema,
   filtrosCategoriasSchema,
+  filtrosRepuestosSchema,
   normalizarNombreCategoria,
   nuevaCategoriaSchema,
   nuevoRepuestoSchema,
 } from './inventario.validation.js'
 
 const validPart = {
+  claveIdempotencia: '1218d43a-1e71-4f80-aef0-227d53d52968',
   nombre: 'Filtro de aceite',
   categoriaId: 'c4d15662-b21d-4789-83a1-6422e7923bd5',
   precioCompra: '125.50',
@@ -35,6 +38,21 @@ describe('validaciones iniciales de inventario', () => {
     expect(parsed.unidadMedida).toBe('UNIDAD')
     expect(parsed.stockMinimo).toBe('0')
     expect(nuevoRepuestoSchema.safeParse({ ...validPart, stockActual: '8' }).success).toBe(false)
+  })
+
+  it('no acepta SKU ni stock actual y el parche no asigna valores predeterminados', () => {
+    expect(nuevoRepuestoSchema.safeParse({ ...validPart, sku: 'REP-00001' }).success).toBe(false)
+    expect(actualizarRepuestoSchema.safeParse({ stockActual: '5' }).success).toBe(false)
+    expect(actualizarRepuestoSchema.safeParse({ sku: 'REP-00002' }).success).toBe(false)
+    expect(actualizarRepuestoSchema.safeParse({}).success).toBe(false)
+    expect(actualizarRepuestoSchema.parse({ precioVenta: '190.00' }).unidadMedida).toBeUndefined()
+  })
+
+  it('valida filtros de productos, UUIDs, estados y límite de paginación', () => {
+    expect(filtrosRepuestosSchema.parse({}).pageSize).toBe(10)
+    expect(filtrosRepuestosSchema.safeParse({ estado: 'ELIMINADOS' }).success).toBe(false)
+    expect(filtrosRepuestosSchema.safeParse({ categoriaId: 'sin-uuid' }).success).toBe(false)
+    expect(filtrosRepuestosSchema.safeParse({ pageSize: '51' }).success).toBe(false)
   })
 
   it('limpia el nombre y hace equivalentes mayúsculas, Unicode y espacios repetidos', () => {

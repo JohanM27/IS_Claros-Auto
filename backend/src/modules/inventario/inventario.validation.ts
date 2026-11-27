@@ -57,6 +57,17 @@ export const filtrosCategoriasSchema = z
   })
   .strict()
 
+export const filtrosRepuestosSchema = z
+  .object({
+    q: z.string().trim().max(180).optional(),
+    categoriaId: z.uuid().optional(),
+    marca: z.string().trim().max(100).optional(),
+    estado: z.enum(['TODOS', 'ACTIVOS', 'INACTIVOS']).default('ACTIVOS'),
+    page: z.coerce.number().int().min(1).max(10000).default(1),
+    pageSize: z.coerce.number().int().min(1).max(50).default(10),
+  })
+  .strict()
+
 const currencySchema = z
   .string()
   .regex(/^\d{1,10}(?:\.\d{1,2})?$/, 'Usa un importe no negativo con hasta dos decimales.')
@@ -67,6 +78,7 @@ const quantitySchema = z
 
 export const nuevoRepuestoSchema = z
   .object({
+    claveIdempotencia: z.uuid(),
     codigoBarras: optionalText(80),
     nombre: z.string().trim().min(1).max(180),
     descripcion: optionalText(2000),
@@ -81,3 +93,21 @@ export const nuevoRepuestoSchema = z
   .strict()
 
 export type NuevoRepuestoInput = z.infer<typeof nuevoRepuestoSchema>
+
+export const actualizarRepuestoSchema = z
+  .object({
+    codigoBarras: optionalText(80),
+    nombre: z.string().trim().min(1).max(180).optional(),
+    descripcion: optionalText(2000),
+    categoriaId: z.uuid().optional(),
+    marca: optionalText(100),
+    numeroParte: optionalText(100),
+    unidadMedida: z.enum(unidadesMedidaRepuesto).optional(),
+    precioCompra: currencySchema.optional(),
+    precioVenta: currencySchema.optional(),
+    stockMinimo: quantitySchema.optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0)
+
+export const estadoRepuestoSchema = z.object({ activo: z.boolean() }).strict()
